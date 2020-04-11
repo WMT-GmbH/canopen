@@ -1,10 +1,4 @@
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-
-
-pub mod canopen;
-pub mod frames;
+pub mod sdo;
 mod split;
 
 
