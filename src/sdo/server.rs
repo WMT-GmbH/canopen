@@ -41,13 +41,15 @@ impl SdoServer {
 
     pub fn on_request(&mut self, _can_id: u32, data: &[u8]) {
         if data.len() != 8 {
-            // TODO return
+            return;
         }
         let command = data[0];
         let request: [u8; 7] = data[1..8].try_into().unwrap();
         //let (command, request) = data.split_first().unwrap();
         let ccs = command & 0xE0;
 
+        // TODO result could be Result<Frame, SdoAbortedError>
+        // then call send_response from here
         let result = match ccs {
             REQUEST_UPLOAD => self.init_upload(request),
             REQUEST_SEGMENT_UPLOAD => self.segmented_upload(command),
@@ -56,8 +58,8 @@ impl SdoServer {
             REQUEST_ABORTED => Ok(()),
             _ => Err(SdoAbortedError { code: 0x05040001 }),
         };
-        if result.is_err() {
-            self.abort(result.unwrap_err())
+        if let Err(abort_error) = result {
+            self.abort(abort_error)
         }
     }
 
@@ -124,7 +126,7 @@ impl SdoServer {
             code[3],
         ];
 
-        print!("abort: ");
+        print!("{}: ", abort_error);
         self.send_response(data);
     }
 
@@ -143,47 +145,49 @@ mod tests {
     use super::*;
     use crate::node::Node;
 
-    struct Network<'a> {
+    struct Network {
         expected_id: u32,
-        excpected_data: &'a [u8],
+        expected_response: [u8; 8],
     }
 
-    impl<'a> hal::MyTransmitter for Network<'a> {
+    impl hal::MyTransmitter for Network {
         fn transmit(&mut self, can_id: u32, data: &[u8]) -> Result<(), ()> {
             assert_eq!(self.expected_id, can_id);
-            assert_eq!(self.excpected_data, data);
+            assert_eq!(self.expected_response, data);
             Ok(())
         }
+    }
+
+    fn test_request(request: &[u8], expected_response: [u8; 8]) {
+        let node = Node {};
+        let mut server = SdoServer::new(42, 420, node);
+
+        let network = Network {
+            expected_id: server.tx_cobid,
+            expected_response,
+        };
+
+        server.associate_network(Box::new(network));
+        server.on_request(0, request);
     }
 
     #[test]
     fn test_init_upload() {
         let data = [64, 2, 3, 4, 5, 6, 7, 8];
-
-        let node = Node {};
-        let mut server = SdoServer::new(42, 420, node);
-        let network = Network {
-            expected_id: 420,
-            excpected_data: &[67, 2, 3, 4, 1, 2, 3, 4],
-        };
-
-        server.associate_network(Box::new(network));
-        server.on_request(0, &data);
+        test_request(&data, [67, 2, 3, 4, 1, 2, 3, 4])
     }
 
     #[test]
     fn test_abort() {
-        // invalid css
+        // invalid command specifier
         let data = [7 << 5, 0, 0, 0, 0, 0, 0, 0];
+        test_request(&data, [128, 0, 0, 0, 1, 0, 4, 5]);
+    }
 
-        let node = Node {};
-        let mut server = SdoServer::new(42, 420, node);
-        let network = Network {
-            expected_id: 420,
-            excpected_data: &[128, 0, 0, 0, 1, 0, 4, 5],
-        };
-
-        server.associate_network(Box::new(network));
-        server.on_request(0, &data);
+    #[test]
+    fn test_bad_data() {
+        test_request(&[0; 7], [1; 8]);
+        test_request(&[0; 9], [1; 8]);
+        test_request(&[], [1; 8]);
     }
 }
