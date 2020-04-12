@@ -1,3 +1,4 @@
+mod hal;
 pub mod node;
 pub mod sdo;
 mod split;
