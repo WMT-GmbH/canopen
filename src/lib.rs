@@ -1,7 +1,6 @@
-pub mod sdo;
 pub mod node;
+pub mod sdo;
 mod split;
-
 
 #[cfg(test)]
 mod tests {

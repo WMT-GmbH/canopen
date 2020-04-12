@@ -1,10 +1,10 @@
 use core::fmt;
 
-pub struct SdoAbortedError{
+pub struct SdoAbortedError {
     pub code: u32,
 }
 
-impl fmt::Display for SdoAbortedError{
+impl fmt::Display for SdoAbortedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text = match &self.code {
             0x0503_0000 => "Toggle bit not alternated",
