@@ -1,12 +1,10 @@
 use super::*;
-use crate::hal;
 use core::convert::TryInto;
 
-pub struct SdoServer {
+pub struct SdoServer<'a> {
     _rx_cobid: u32,
     tx_cobid: u32,
-    node: node::Node,
-    network: Option<Box<dyn hal::MyTransmitter>>,
+    node: node::Node<'a>,
     state: State,
 }
 
@@ -24,19 +22,14 @@ impl State {
     }
 }
 
-impl SdoServer {
+impl SdoServer<'_> {
     pub fn new(rx_cobid: u32, tx_cobid: u32, node: node::Node) -> SdoServer {
         SdoServer {
             _rx_cobid: rx_cobid,
             tx_cobid,
             node,
-            network: None,
             state: State::new(),
         }
-    }
-
-    pub fn associate_network(&mut self, network: Box<dyn hal::MyTransmitter>) {
-        self.network = Some(network);
     }
 
     pub fn on_request(&mut self, _can_id: u32, data: &[u8]) {
@@ -56,7 +49,7 @@ impl SdoServer {
             REQUEST_DOWNLOAD => self.init_download(request),
             REQUEST_SEGMENT_DOWNLOAD => self.segmented_download(command, request),
             REQUEST_ABORTED => Ok(()),
-            _ => Err(SdoAbortedError { code: 0x05040001 }),
+            _ => Err(SdoAbortedError(0x0504_0001)),
         };
         if let Err(abort_error) = result {
             self.abort(abort_error)
@@ -77,9 +70,9 @@ impl SdoServer {
         if size <= 4 {
             res_command |= EXPEDITED;
             res_command |= (4 - size as u8) << 2;
-            &response[4..4 + size].copy_from_slice(&data);
+            response[4..4 + size].copy_from_slice(&data);
         } else {
-            &response[4..].copy_from_slice(&(size as u32).to_le_bytes());
+            response[4..].copy_from_slice(&(size as u32).to_le_bytes());
             // self._buffer = bytearray(data)
             // self._toggle = 0
         }
@@ -114,7 +107,7 @@ impl SdoServer {
     fn abort(&mut self, abort_error: SdoAbortedError) {
         let [index_lo, index_hi] = self.state.index.unwrap_or_default().to_le_bytes();
         let subindex = self.state.subindex.unwrap_or_default();
-        let code = abort_error.code.to_le_bytes();
+        let code = abort_error.to_le_bytes();
         let data: [u8; 8] = [
             RESPONSE_ABORTED,
             index_lo,
@@ -132,9 +125,9 @@ impl SdoServer {
 
     fn send_response(&mut self, data: [u8; 8]) {
         println!("{:?}", data);
-        self.network
-            .as_mut()
-            .unwrap()
+        self.node
+            .network
+            .borrow_mut()
             .transmit(self.tx_cobid, &data)
             .ok();
     }
@@ -143,7 +136,9 @@ impl SdoServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hal;
     use crate::node::Node;
+    use core::cell::RefCell;
 
     struct Network {
         expected_id: u32,
@@ -159,15 +154,17 @@ mod tests {
     }
 
     fn test_request(request: &[u8], expected_response: [u8; 8]) {
-        let node = Node {};
+        let tx_cobid = 420;
+
+        let network = RefCell::new(Network {
+            expected_id: tx_cobid,
+            expected_response,
+        });
+
+        let node = Node { network: &network };
+
         let mut server = SdoServer::new(42, 420, node);
 
-        let network = Network {
-            expected_id: server.tx_cobid,
-            expected_response,
-        };
-
-        server.associate_network(Box::new(network));
         server.on_request(0, request);
     }
 

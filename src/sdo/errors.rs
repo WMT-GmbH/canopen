@@ -1,12 +1,16 @@
 use core::fmt;
 
-pub struct SdoAbortedError {
-    pub code: u32,
+pub struct SdoAbortedError(pub u32);
+
+impl SdoAbortedError {
+    pub fn to_le_bytes(&self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
 }
 
 impl fmt::Display for SdoAbortedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let text = match &self.code {
+        let text = match &self.0 {
             0x0503_0000 => "Toggle bit not alternated",
             0x0504_0000 => "SDO protocol timed out",
             0x0504_0001 => "Client/server command specifier not valid or unknown",
@@ -41,6 +45,6 @@ impl fmt::Display for SdoAbortedError {
             _ => "",
         };
 
-        write!(f, "Code 0x{:08X}, {}", self.code, text)
+        write!(f, "Code 0x{:08X}, {}", self.0, text)
     }
 }

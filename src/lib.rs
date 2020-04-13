@@ -1,3 +1,5 @@
+//#![no_std]
+#[warn(clippy::all)]
 mod hal;
 pub mod node;
 pub mod sdo;

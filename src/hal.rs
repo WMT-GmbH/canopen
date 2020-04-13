@@ -120,5 +120,12 @@ pub trait Receiver: Interface {
 }
 
 pub trait MyTransmitter {
+    /*
+    type Id: Id;
+
+    type Frame: Frame<Id = Self::Id>;
+
+    fn transmit2(&mut self, frame: &Self::Frame) -> Result<(), ()>;*/
+
     fn transmit(&mut self, can_id: u32, data: &[u8]) -> Result<(), ()>;
 }
