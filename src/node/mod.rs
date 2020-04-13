@@ -1,8 +1,8 @@
-use crate::network::HalNetwork;
+use crate::network::Network;
 use crate::sdo::SdoAbortedError;
 
 pub struct Node<'a> {
-    pub network: &'a HalNetwork<'a>,
+    pub network: &'a dyn Network,
 }
 
 impl<'a> Node<'a> {

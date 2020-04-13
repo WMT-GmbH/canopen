@@ -132,37 +132,37 @@ impl SdoServer<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hal;
-    use crate::network::HalNetwork;
+    use crate::network::Network;
     use crate::node::Node;
     use core::cell::RefCell;
 
-    struct Interface {
-        expected_id: u32,
-        expected_response: [u8; 8],
+    pub struct MockNetwork {
+        sent_messages: RefCell<Vec<[u8; 8]>>,
     }
 
-    impl hal::MyTransmitter for Interface {
-        fn transmit(&mut self, can_id: u32, data: &[u8]) -> Result<(), ()> {
-            assert_eq!(self.expected_id, can_id);
-            assert_eq!(self.expected_response, data);
-            Ok(())
+    impl MockNetwork {
+        pub fn new() -> MockNetwork {
+            MockNetwork {
+                sent_messages: RefCell::new(vec![]),
+            }
         }
     }
 
-    fn test_request(request: &[u8], expected_response: [u8; 8]) {
+    impl Network for MockNetwork {
+        fn send_message(&self, can_id: u32, data: [u8; 8]) {
+            dbg!(can_id, data);
+            println!("sent");
+            self.sent_messages.borrow_mut().push(data);
+        }
+    }
+
+    fn test_request(network: &MockNetwork, request: &[u8]) {
+        let rx_cobid = 69;
         let tx_cobid = 420;
 
-        let interface = RefCell::new(Interface {
-            expected_id: tx_cobid,
-            expected_response,
-        });
+        let node = Node { network };
 
-        let network = HalNetwork::new(&interface);
-
-        let node = Node { network: &network };
-
-        let mut server = SdoServer::new(42, 420, node);
+        let mut server = SdoServer::new(rx_cobid, tx_cobid, node);
 
         server.on_request(0, request);
     }
@@ -170,20 +170,32 @@ mod tests {
     #[test]
     fn test_init_upload() {
         let data = [64, 2, 3, 4, 5, 6, 7, 8];
-        test_request(&data, [67, 2, 3, 4, 1, 2, 3, 4])
+        let network = MockNetwork::new();
+        test_request(&network, &data);
+        dbg!(network.sent_messages.borrow()[0]);
+
+        assert_eq!(network.sent_messages.borrow()[0], [67, 2, 3, 4, 1, 2, 3, 4]);
     }
 
     #[test]
     fn test_abort() {
         // invalid command specifier
         let data = [7 << 5, 0, 0, 0, 0, 0, 0, 0];
-        test_request(&data, [128, 0, 0, 0, 1, 0, 4, 5]);
+        let network = MockNetwork::new();
+        test_request(&network, &data);
+        assert_eq!(
+            network.sent_messages.borrow()[0],
+            [128, 0, 0, 0, 1, 0, 4, 5]
+        );
     }
 
     #[test]
     fn test_bad_data() {
-        test_request(&[0; 7], [1; 8]);
-        test_request(&[0; 9], [1; 8]);
-        test_request(&[], [1; 8]);
+        let network = MockNetwork::new();
+
+        test_request(&network, &[0; 7]);
+        test_request(&network, &[0; 9]);
+        test_request(&network, &[]);
+        assert!(network.sent_messages.borrow().is_empty());
     }
 }
