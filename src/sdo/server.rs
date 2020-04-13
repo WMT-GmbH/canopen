@@ -125,11 +125,7 @@ impl SdoServer<'_> {
 
     fn send_response(&mut self, data: [u8; 8]) {
         println!("{:?}", data);
-        self.node
-            .network
-            .borrow_mut()
-            .transmit(self.tx_cobid, &data)
-            .ok();
+        self.node.network.send_message(self.tx_cobid, data);
     }
 }
 
@@ -137,15 +133,16 @@ impl SdoServer<'_> {
 mod tests {
     use super::*;
     use crate::hal;
+    use crate::network::HalNetwork;
     use crate::node::Node;
     use core::cell::RefCell;
 
-    struct Network {
+    struct Interface {
         expected_id: u32,
         expected_response: [u8; 8],
     }
 
-    impl hal::MyTransmitter for Network {
+    impl hal::MyTransmitter for Interface {
         fn transmit(&mut self, can_id: u32, data: &[u8]) -> Result<(), ()> {
             assert_eq!(self.expected_id, can_id);
             assert_eq!(self.expected_response, data);
@@ -156,10 +153,12 @@ mod tests {
     fn test_request(request: &[u8], expected_response: [u8; 8]) {
         let tx_cobid = 420;
 
-        let network = RefCell::new(Network {
+        let interface = RefCell::new(Interface {
             expected_id: tx_cobid,
             expected_response,
         });
+
+        let network = HalNetwork::new(&interface);
 
         let node = Node { network: &network };
 

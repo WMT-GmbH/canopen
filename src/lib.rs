@@ -1,6 +1,7 @@
 //#![no_std]
 #[warn(clippy::all)]
 mod hal;
+pub mod network;
 pub mod node;
 pub mod sdo;
 mod split;

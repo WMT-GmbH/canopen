@@ -1,9 +1,8 @@
-use crate::hal;
+use crate::network::HalNetwork;
 use crate::sdo::SdoAbortedError;
-use core::cell::RefCell;
 
 pub struct Node<'a> {
-    pub network: &'a RefCell<dyn hal::MyTransmitter>,
+    pub network: &'a HalNetwork<'a>,
 }
 
 impl<'a> Node<'a> {
