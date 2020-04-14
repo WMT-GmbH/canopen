@@ -115,7 +115,7 @@ impl SdoServer<'_> {
     fn abort(&mut self, abort_error: SDOAbortCode) {
         let [index_lo, index_hi] = self.state.index.to_le_bytes();
         let subindex = self.state.subindex;
-        let code: [u8; 4] = abort_error.into();
+        let code: [u8; 4] = (abort_error as u32).to_le_bytes();
         let data: [u8; 8] = [
             RESPONSE_ABORTED,
             index_lo,
@@ -166,8 +166,14 @@ mod tests {
         let tx_cobid = 420;
 
         let mut od = objectdictionary::ObjectDictionary::default();
-        od.add_object(objectdictionary::Object::Variable(1, 0));
-        od.add_object(objectdictionary::Object::Variable(2, 0));
+        od.add_object(objectdictionary::Object::Variable {
+            index: 1,
+            subindex: 0,
+        });
+        od.add_object(objectdictionary::Object::Variable {
+            index: 2,
+            subindex: 0,
+        });
 
         let node = Node { network, od };
 

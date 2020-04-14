@@ -1,38 +1,39 @@
 use core::fmt;
 
+#[repr(u32)]
 pub enum SDOAbortCode {
-    ToggleBitNotAlternated,
-    SDOProtocolTimedOut,
-    CommandSpecifierError,
-    InvalidBlockSize,
-    InvalidSequenceNumber,
-    CRCError,
-    OutOfMemory,
-    UnsupportedAccess,
-    WriteOnlyError,
-    ReadOnlyError,
-    ObjectDoesNotExist,
-    ObjectCannotBeMapped,
-    PDOOverflow,
-    ParameterIncompatibility,
-    InternalIncompatibility,
-    HardwareError,
-    WrongLength,
-    TooLong,
-    TooShort,
-    SubindexDoesNotExist,
-    InvalidValue,
-    ValueTooHigh,
-    ValueTooLow,
-    MaxLessThanMin,
-    ResourceNotAvailable,
-    GeneralError,
-    TransferOrStorageError,
-    LocalControlError,
-    DeviceStateError,
-    DictionaryError,
-    NoDataAvailable,
     UnknownAbortCode,
+    ToggleBitNotAlternated = 0x0503_0000,
+    SDOProtocolTimedOut = 0x0504_0000,
+    CommandSpecifierError = 0x0504_0001,
+    InvalidBlockSize = 0x0504_0002,
+    InvalidSequenceNumber = 0x0504_0003,
+    CRCError = 0x0504_0004,
+    OutOfMemory = 0x0504_0005,
+    UnsupportedAccess = 0x0601_0000,
+    WriteOnlyError = 0x0601_0001,
+    ReadOnlyError = 0x0601_0002,
+    ObjectDoesNotExist = 0x0602_0000,
+    ObjectCannotBeMapped = 0x0604_0041,
+    PDOOverflow = 0x0604_0042,
+    ParameterIncompatibility = 0x0604_0043,
+    InternalIncompatibility = 0x0604_0047,
+    HardwareError = 0x0606_0000,
+    WrongLength = 0x0607_0010,
+    TooLong = 0x0607_0012,
+    TooShort = 0x0607_0013,
+    SubindexDoesNotExist = 0x0609_0011,
+    InvalidValue = 0x0609_0030,
+    ValueTooHigh = 0x0609_0031,
+    ValueTooLow = 0x0609_0032,
+    MaxLessThanMin = 0x0609_0036,
+    ResourceNotAvailable = 0x060A_0023,
+    GeneralError = 0x0800_0000,
+    TransferOrStorageError = 0x0800_0020,
+    LocalControlError = 0x0800_0021,
+    DeviceStateError = 0x0800_0022,
+    DictionaryError = 0x0800_0023,
+    NoDataAvailable = 0x0800_0024,
 }
 
 impl From<u32> for SDOAbortCode {
@@ -73,84 +74,6 @@ impl From<u32> for SDOAbortCode {
     }
 }
 
-impl Into<u32> for SDOAbortCode {
-    fn into(self) -> u32 {
-        match self {
-            SDOAbortCode::ToggleBitNotAlternated => 0x0503_0000u32,
-            SDOAbortCode::SDOProtocolTimedOut => 0x0504_0000u32,
-            SDOAbortCode::CommandSpecifierError => 0x0504_0001u32,
-            SDOAbortCode::InvalidBlockSize => 0x0504_0002u32,
-            SDOAbortCode::InvalidSequenceNumber => 0x0504_0003u32,
-            SDOAbortCode::CRCError => 0x0504_0004u32,
-            SDOAbortCode::OutOfMemory => 0x0504_0005u32,
-            SDOAbortCode::UnsupportedAccess => 0x0601_0000u32,
-            SDOAbortCode::WriteOnlyError => 0x0601_0001u32,
-            SDOAbortCode::ReadOnlyError => 0x0601_0002u32,
-            SDOAbortCode::ObjectDoesNotExist => 0x0602_0000u32,
-            SDOAbortCode::ObjectCannotBeMapped => 0x0604_0041u32,
-            SDOAbortCode::PDOOverflow => 0x0604_0042u32,
-            SDOAbortCode::ParameterIncompatibility => 0x0604_0043u32,
-            SDOAbortCode::InternalIncompatibility => 0x0604_0047u32,
-            SDOAbortCode::HardwareError => 0x0606_0000u32,
-            SDOAbortCode::WrongLength => 0x0607_0010u32,
-            SDOAbortCode::TooLong => 0x0607_0012u32,
-            SDOAbortCode::TooShort => 0x0607_0013u32,
-            SDOAbortCode::SubindexDoesNotExist => 0x0609_0011u32,
-            SDOAbortCode::InvalidValue => 0x0609_0030u32,
-            SDOAbortCode::ValueTooHigh => 0x0609_0031u32,
-            SDOAbortCode::ValueTooLow => 0x0609_0032u32,
-            SDOAbortCode::MaxLessThanMin => 0x0609_0036u32,
-            SDOAbortCode::ResourceNotAvailable => 0x060A_0023u32,
-            SDOAbortCode::GeneralError => 0x0800_0000u32,
-            SDOAbortCode::TransferOrStorageError => 0x0800_0020u32,
-            SDOAbortCode::LocalControlError => 0x0800_0021u32,
-            SDOAbortCode::DeviceStateError => 0x0800_0022u32,
-            SDOAbortCode::DictionaryError => 0x0800_0023u32,
-            SDOAbortCode::NoDataAvailable => 0x0800_0024u32,
-            SDOAbortCode::UnknownAbortCode => 0,
-        }
-    }
-}
-
-impl Into<[u8; 4]> for SDOAbortCode {
-    fn into(self) -> [u8; 4] {
-        let code: u32 = self.into();
-        code.to_le_bytes()
-    }
-}
-
-const TOGGLE_BIT_NOT_ALTERNATED: u32 = 0x0503_0000;
-const SDO_PROTOCOL_TIMED_OUT: u32 = 0x0504_0000;
-const COMMAND_SPECIFIER_ERROR: u32 = 0x0504_0001;
-const INVALID_BLOCK_SIZE: u32 = 0x0504_0002;
-const INVALID_SEQUENCE_NUMBER: u32 = 0x0504_0003;
-const CRC_ERROR: u32 = 0x0504_0004;
-const OUT_OF_MEMORY: u32 = 0x0504_0005;
-const UNSUPPORTED_ACCESS: u32 = 0x0601_0000;
-const WRITE_ONLY_ERROR: u32 = 0x0601_0001;
-const READ_ONLY_ERROR: u32 = 0x0601_0002;
-const OBJECT_DOES_NOT_EXIST: u32 = 0x0602_0000;
-const OBJECT_CANNOT_BE_MAPPED: u32 = 0x0604_0041;
-const PDO_OVERFLOW: u32 = 0x0604_0042;
-const PARAMETER_INCOMPATIBILITY: u32 = 0x0604_0043;
-const INTERNAL_INCOMPATIBILITY: u32 = 0x0604_0047;
-const HARDWARE_ERROR: u32 = 0x0606_0000;
-const WRONG_LENGTH: u32 = 0x0607_0010;
-const TOO_LONG: u32 = 0x0607_0012;
-const TOO_SHORT: u32 = 0x0607_0013;
-const SUBINDEX_DOES_NOT_EXIST: u32 = 0x0609_0011;
-const INVALID_VALUE: u32 = 0x0609_0030;
-const VALUE_TOO_HIGH: u32 = 0x0609_0031;
-const VALUE_TOO_LOW: u32 = 0x0609_0032;
-const MAX_LESS_THAN_MIN: u32 = 0x0609_0036;
-const RESOURCE_NOT_AVAILABLE: u32 = 0x060A_0023;
-const GENERAL_ERROR: u32 = 0x0800_0000;
-const TRANSFER_OR_STORAGE_ERROR: u32 = 0x0800_0020;
-const LOCAL_CONTROL_ERROR: u32 = 0x0800_0021;
-const DEVICE_STATE_ERROR: u32 = 0x0800_0022;
-const DICTIONARY_ERROR: u32 = 0x0800_0023;
-const NO_DATA_AVAILABLE: u32 = 0x0800_0024;
-
 impl fmt::Display for SDOAbortCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text = match self {
@@ -185,9 +108,10 @@ impl fmt::Display for SDOAbortCode {
             SDOAbortCode::DeviceStateError => "Data can not be transferred or stored to the application because of the present device state",
             SDOAbortCode::DictionaryError => "Object dictionary dynamic generation fails or no object dictionary is present",
             SDOAbortCode::NoDataAvailable => "No data available",
-            SDOAbortCode::UnknownAbortCode => "UnknownAbortCode",
+            SDOAbortCode::UnknownAbortCode => "Unknown abort code",
         };
 
-        write!(f, "Code 0x{:08X}, {}", self.into(), text)
+        //write!(f, "Code 0x{:08X}, {}", self as u32, text)
+        write!(f, "{}", text)
     }
 }

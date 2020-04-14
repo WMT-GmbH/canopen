@@ -13,7 +13,7 @@ impl ObjectDictionary {
 
     pub fn add_object(&mut self, object: Object) {
         let index = match object {
-            Object::Variable(index, _) => index,
+            Object::Variable { index, .. } => index,
         };
         self.indices.insert(index, object);
     }
@@ -31,18 +31,13 @@ impl Index<u16> for ObjectDictionary{
 }*/
 
 pub enum Object {
-    Variable(u16, u8),
+    Variable { index: u16, subindex: u8 },
 }
 
 impl Object {
     pub fn get_index(&self) -> u16 {
         match self {
-            Object::Variable(index, _) => *index,
+            Object::Variable { index, .. } => *index,
         }
     }
-}
-
-struct VariableObject {
-    index: u16,
-    subindex: u8,
 }
