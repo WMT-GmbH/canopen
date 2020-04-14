@@ -1,11 +1,15 @@
-//#![no_std]
-#[warn(clippy::all)]
+#![no_std]
+#[macro_use]
+extern crate alloc;
+
 pub mod network;
+pub mod objectdictionary;
 pub mod node;
 pub mod sdo;
-mod split;
 
 #[cfg(test)]
+#[macro_use]
+extern crate std;
 mod tests {
     #[test]
     fn it_works() {

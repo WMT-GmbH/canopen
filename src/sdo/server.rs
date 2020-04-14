@@ -1,17 +1,20 @@
 use super::*;
+use alloc::vec::Vec;
 use core::convert::TryInto;
 
 pub struct SdoServer<'a> {
     _rx_cobid: u32,
     tx_cobid: u32,
     node: node::Node<'a>,
-    state: Option<State>,
+    state: State,
 }
 
+#[derive(Default)]
 struct State {
     index: u16,
     subindex: u8,
     toggle_bit: u8,
+    buffer: Vec<u8>,
 }
 
 impl SdoServer<'_> {
@@ -20,7 +23,7 @@ impl SdoServer<'_> {
             _rx_cobid: rx_cobid,
             tx_cobid,
             node,
-            state: None,
+            state: State::default(),
         }
     }
 
@@ -51,11 +54,8 @@ impl SdoServer<'_> {
     fn init_upload(&mut self, request: [u8; 7]) -> Result<(), SdoAbortedError> {
         let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
         let subindex = request[2];
-        self.state = Some(State {
-            index,
-            subindex,
-            toggle_bit: 0,
-        });
+        self.state.index = index;
+        self.state.subindex = subindex;
 
         let data = self.node.get_data(index, subindex)?;
         let mut res_command = RESPONSE_UPLOAD | SIZE_SPECIFIED;
@@ -68,51 +68,42 @@ impl SdoServer<'_> {
             response[4..4 + size].copy_from_slice(&data);
         } else {
             response[4..].copy_from_slice(&(size as u32).to_le_bytes());
-            // self._buffer = bytearray(data) TODO
+            self.state.buffer = data;
+            self.state.toggle_bit = 0;
         }
 
         response[0] = res_command;
         response[1..3].copy_from_slice(&index.to_le_bytes());
         response[3] = subindex;
-        print!("init upload: ");
         self.send_response(response);
         Ok(())
     }
 
     fn segmented_upload(&mut self, command: u8) -> Result<(), SdoAbortedError> {
-        print!("segmented_upload: ");
-        if command & _TOGGLE_BIT != self.state.as_ref().unwrap().toggle_bit {
-            // TODO unwrap
+        if command & TOGGLE_BIT != self.state.toggle_bit {
             return Err(SdoAbortedError(0x0503_0000));
         }
-        /*
-        data = self._buffer[:7]
-        size = len(data)
 
-        # Remove sent data from buffer
-        del self._buffer[:7]
+        let size = self.state.buffer.len().min(7);
+        let data: Vec<u8> = self.state.buffer.drain(..size).collect();
+        let mut res_command = RESPONSE_SEGMENT_DOWNLOAD;
+        res_command |= self.state.toggle_bit; // add toggle bit
+        res_command |= (7 - size as u8) << 1; // add nof bytes not used
 
-        res_command = RESPONSE_SEGMENT_UPLOAD
-        # Add toggle bit
-        res_command |= self._toggle
-        # Add nof bytes not used
-        res_command |= (7 - size) << 1
-        if not self._buffer:
-            # Nothing left in buffer
-            res_command |= NO_MORE_DATA
-        # Toggle bit for next message
-        self._toggle ^= TOGGLE_BIT
+        if self.state.buffer.is_empty() {
+            res_command |= NO_MORE_DATA; // nothing left in buffer
+        }
 
-        response = bytearray(8)
-        response[0] = res_command
-        response[1:1 + size] = data
-        self.send_response(response)
-        */
+        self.state.toggle_bit ^= TOGGLE_BIT;
+
+        let mut response = [0; 8];
+        response[0] = res_command;
+        response[1..1 + size].copy_from_slice(&data);
+        self.send_response(response);
         Ok(())
     }
 
-    fn init_download(&mut self, request: [u8; 7]) -> Result<(), SdoAbortedError> {
-        print!("{:?}", request);
+    fn init_download(&mut self, _request: [u8; 7]) -> Result<(), SdoAbortedError> {
         Ok(())
     }
 
@@ -121,17 +112,12 @@ impl SdoServer<'_> {
         _command: u8,
         _request: [u8; 7],
     ) -> Result<(), SdoAbortedError> {
-        println!("segmented_download: ");
         Ok(())
     }
 
     fn abort(&mut self, abort_error: SdoAbortedError) {
-        let (index, subindex) = match &self.state {
-            Some(state) => (state.index, state.subindex),
-            None => (0, 0),
-        };
-
-        let [index_lo, index_hi] = index.to_le_bytes();
+        let [index_lo, index_hi] = self.state.index.to_le_bytes();
+        let subindex = self.state.subindex;
         let code = abort_error.to_le_bytes();
         let data: [u8; 8] = [
             RESPONSE_ABORTED,
@@ -144,12 +130,10 @@ impl SdoServer<'_> {
             code[3],
         ];
 
-        print!("{}: ", abort_error);
         self.send_response(data);
     }
 
     fn send_response(&mut self, data: [u8; 8]) {
-        println!("{:?}", data);
         self.node.network.send_message(self.tx_cobid, data);
     }
 }
@@ -160,6 +144,7 @@ mod tests {
     use crate::network::Network;
     use crate::node::Node;
     use core::cell::RefCell;
+    use crate::objectdictionary;
 
     pub struct MockNetwork {
         sent_messages: RefCell<Vec<[u8; 8]>>,
@@ -174,43 +159,61 @@ mod tests {
     }
 
     impl Network for MockNetwork {
-        fn send_message(&self, can_id: u32, data: [u8; 8]) {
-            dbg!(can_id, data);
-            println!("sent");
+        fn send_message(&self, _can_id: u32, data: [u8; 8]) {
             self.sent_messages.borrow_mut().push(data);
         }
     }
 
-    fn test_request(network: &MockNetwork, request: &[u8]) {
+    fn mock_server(network: &MockNetwork) -> SdoServer {
         let rx_cobid = 69;
         let tx_cobid = 420;
 
-        let node = Node { network };
+        let mut od = objectdictionary::ObjectDictionary::default();
+        od.add_object(objectdictionary::Object::Variable(1, 0));
+        od.add_object(objectdictionary::Object::Variable(2, 0));
 
-        let mut server = SdoServer::new(rx_cobid, tx_cobid, node);
 
-        server.on_request(0, request);
+        let node = Node { network , od};
+
+        SdoServer::new(rx_cobid, tx_cobid, node)
     }
 
     #[test]
-    fn test_init_upload() {
-        let data = [64, 2, 3, 4, 5, 6, 7, 8];
+    fn test_expedited_upload() {
         let network = MockNetwork::new();
-        test_request(&network, &data);
-        dbg!(network.sent_messages.borrow()[0]);
+        let mut server = mock_server(&network);
 
-        assert_eq!(network.sent_messages.borrow()[0], [67, 2, 3, 4, 1, 2, 3, 4]);
+        server.on_request(server.tx_cobid, &[64, 1, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
+
+    }
+
+    #[test]
+    fn test_segmented_upload() {
+        let network = MockNetwork::new();
+        let mut server = mock_server(&network);
+
+        server.on_request(server.tx_cobid, &[64, 2, 0, 0, 0, 0, 0, 0]);
+        server.on_request(server.tx_cobid, &[96, 0, 0, 0, 0, 0, 0, 0]);
+
+        assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
+        assert_eq!(network.sent_messages.borrow()[1], [37, 1, 2, 3, 4, 5, 0, 0]);
+
     }
 
     #[test]
     fn test_abort() {
-        // invalid command specifier
-        let data = [7 << 5, 0, 0, 0, 0, 0, 0, 0];
         let network = MockNetwork::new();
-        test_request(&network, &data);
+        let mut server = mock_server(&network);
+        server.on_request(server.tx_cobid, &[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
+        server.on_request(server.tx_cobid, &[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
         assert_eq!(
             network.sent_messages.borrow()[0],
             [128, 0, 0, 0, 1, 0, 4, 5]
+        );
+        assert_eq!(
+            network.sent_messages.borrow()[1],
+            [128, 0, 0, 0, 0, 0, 2, 6]
         );
     }
 
@@ -218,9 +221,11 @@ mod tests {
     fn test_bad_data() {
         let network = MockNetwork::new();
 
-        test_request(&network, &[0; 7]);
-        test_request(&network, &[0; 9]);
-        test_request(&network, &[]);
+        let mut server = mock_server(&network);
+
+        server.on_request(server.tx_cobid, &[0; 7]);
+        server.on_request(server.tx_cobid, &[0; 9]);
+        server.on_request(server.tx_cobid, &[]);
         assert!(network.sent_messages.borrow().is_empty());
     }
 }
