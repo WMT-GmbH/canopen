@@ -2,7 +2,7 @@ pub mod server;
 pub use server::SdoServer;
 
 pub mod errors;
-pub use errors::SdoAbortedError;
+pub use errors::SDOAbortCode;
 
 use crate::node;
 
