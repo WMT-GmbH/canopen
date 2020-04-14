@@ -5,21 +5,13 @@ pub struct SdoServer<'a> {
     _rx_cobid: u32,
     tx_cobid: u32,
     node: node::Node<'a>,
-    state: State,
+    state: Option<State>,
 }
 
 struct State {
-    index: Option<u16>,
-    subindex: Option<u8>,
-}
-
-impl State {
-    fn new() -> State {
-        State {
-            index: None,
-            subindex: None,
-        }
-    }
+    index: u16,
+    subindex: u8,
+    toggle_bit: u8,
 }
 
 impl SdoServer<'_> {
@@ -28,7 +20,7 @@ impl SdoServer<'_> {
             _rx_cobid: rx_cobid,
             tx_cobid,
             node,
-            state: State::new(),
+            state: None,
         }
     }
 
@@ -59,8 +51,11 @@ impl SdoServer<'_> {
     fn init_upload(&mut self, request: [u8; 7]) -> Result<(), SdoAbortedError> {
         let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
         let subindex = request[2];
-        self.state.index = Some(index);
-        self.state.subindex = Some(subindex);
+        self.state = Some(State {
+            index,
+            subindex,
+            toggle_bit: 0,
+        });
 
         let data = self.node.get_data(index, subindex)?;
         let mut res_command = RESPONSE_UPLOAD | SIZE_SPECIFIED;
@@ -73,8 +68,7 @@ impl SdoServer<'_> {
             response[4..4 + size].copy_from_slice(&data);
         } else {
             response[4..].copy_from_slice(&(size as u32).to_le_bytes());
-            // self._buffer = bytearray(data)
-            // self._toggle = 0
+            // self._buffer = bytearray(data) TODO
         }
 
         response[0] = res_command;
@@ -85,8 +79,35 @@ impl SdoServer<'_> {
         Ok(())
     }
 
-    fn segmented_upload(&mut self, _command: u8) -> Result<(), SdoAbortedError> {
+    fn segmented_upload(&mut self, command: u8) -> Result<(), SdoAbortedError> {
         print!("segmented_upload: ");
+        if command & _TOGGLE_BIT != self.state.as_ref().unwrap().toggle_bit {
+            // TODO unwrap
+            return Err(SdoAbortedError(0x0503_0000));
+        }
+        /*
+        data = self._buffer[:7]
+        size = len(data)
+
+        # Remove sent data from buffer
+        del self._buffer[:7]
+
+        res_command = RESPONSE_SEGMENT_UPLOAD
+        # Add toggle bit
+        res_command |= self._toggle
+        # Add nof bytes not used
+        res_command |= (7 - size) << 1
+        if not self._buffer:
+            # Nothing left in buffer
+            res_command |= NO_MORE_DATA
+        # Toggle bit for next message
+        self._toggle ^= TOGGLE_BIT
+
+        response = bytearray(8)
+        response[0] = res_command
+        response[1:1 + size] = data
+        self.send_response(response)
+        */
         Ok(())
     }
 
@@ -105,8 +126,12 @@ impl SdoServer<'_> {
     }
 
     fn abort(&mut self, abort_error: SdoAbortedError) {
-        let [index_lo, index_hi] = self.state.index.unwrap_or_default().to_le_bytes();
-        let subindex = self.state.subindex.unwrap_or_default();
+        let (index, subindex) = match &self.state {
+            Some(state) => (state.index, state.subindex),
+            None => (0, 0),
+        };
+
+        let [index_lo, index_hi] = index.to_le_bytes();
         let code = abort_error.to_le_bytes();
         let data: [u8; 8] = [
             RESPONSE_ABORTED,
