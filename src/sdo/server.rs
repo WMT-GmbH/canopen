@@ -1,5 +1,5 @@
 use super::*;
-use alloc::vec::Vec;
+// use alloc::vec::Vec;
 use core::convert::TryInto;
 
 pub struct SdoServer<'a> {
@@ -143,8 +143,8 @@ mod tests {
     use super::*;
     use crate::network::Network;
     use crate::node::Node;
-    use core::cell::RefCell;
     use crate::objectdictionary;
+    use core::cell::RefCell;
 
     pub struct MockNetwork {
         sent_messages: RefCell<Vec<[u8; 8]>>,
@@ -172,8 +172,7 @@ mod tests {
         od.add_object(objectdictionary::Object::Variable(1, 0));
         od.add_object(objectdictionary::Object::Variable(2, 0));
 
-
-        let node = Node { network , od};
+        let node = Node { network, od };
 
         SdoServer::new(rx_cobid, tx_cobid, node)
     }
@@ -185,7 +184,6 @@ mod tests {
 
         server.on_request(server.tx_cobid, &[64, 1, 0, 0, 0, 0, 0, 0]);
         assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
-
     }
 
     #[test]
@@ -198,7 +196,6 @@ mod tests {
 
         assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
         assert_eq!(network.sent_messages.borrow()[1], [37, 1, 2, 3, 4, 5, 0, 0]);
-
     }
 
     #[test]

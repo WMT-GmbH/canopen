@@ -1,18 +1,19 @@
-use alloc::collections::BTreeMap;
+//use alloc::collections::BTreeMap;
+use std::collections::BTreeMap;
 
 #[derive(Default)]
-pub struct ObjectDictionary{
+pub struct ObjectDictionary {
     indices: BTreeMap<u16, Object>,
 }
 
-impl ObjectDictionary{
-    pub fn get(&self, index: u16) -> Option<&Object>{
+impl ObjectDictionary {
+    pub fn get(&self, index: u16) -> Option<&Object> {
         self.indices.get(&index)
     }
 
-    pub fn add_object(&mut self, object: Object){
+    pub fn add_object(&mut self, object: Object) {
         let index = match object {
-            Object::Variable(index, _)=> index
+            Object::Variable(index, _) => index,
         };
         self.indices.insert(index, object);
     }
@@ -30,16 +31,18 @@ impl Index<u16> for ObjectDictionary{
 }*/
 
 pub enum Object {
-    Variable(u16, u8)
+    Variable(u16, u8),
 }
 
-impl Object{
+impl Object {
     pub fn get_index(&self) -> u16 {
-        match self { Object::Variable(index, _) => *index, }
+        match self {
+            Object::Variable(index, _) => *index,
+        }
     }
 }
 
-struct VariableObject{
+struct VariableObject {
     index: u16,
-    subindex: u8
+    subindex: u8,
 }
