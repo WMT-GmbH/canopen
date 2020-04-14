@@ -18,6 +18,8 @@ struct State {
     buffer: Vec<u8>,
 }
 
+type RequestResult = Result<Option<[u8; 8]>, SDOAbortCode>;
+
 impl SdoServer<'_> {
     pub fn new(rx_cobid: u32, tx_cobid: u32, node: node::Node) -> SdoServer {
         SdoServer {
@@ -42,17 +44,19 @@ impl SdoServer<'_> {
         let result = match ccs {
             REQUEST_UPLOAD => self.init_upload(request),
             REQUEST_SEGMENT_UPLOAD => self.segmented_upload(command),
-            REQUEST_DOWNLOAD => self.init_download(request),
+            REQUEST_DOWNLOAD => self.init_download(command, request),
             REQUEST_SEGMENT_DOWNLOAD => self.segmented_download(command, request),
-            REQUEST_ABORTED => Ok(()),
+            REQUEST_ABORTED => Ok(None),
             _ => Err(SDOAbortCode::CommandSpecifierError),
         };
-        if let Err(abort_error) = result {
-            self.abort(abort_error)
-        }
+        match result {
+            Ok(None) => {}
+            Ok(Some(response)) => self.send_response(response),
+            Err(abort_code) => self.abort(abort_code),
+        };
     }
 
-    fn init_upload(&mut self, request: [u8; 7]) -> Result<(), SDOAbortCode> {
+    fn init_upload(&mut self, request: [u8; 7]) -> RequestResult {
         let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
         let subindex = request[2];
         self.state.index = index;
@@ -76,11 +80,11 @@ impl SdoServer<'_> {
         response[0] = res_command;
         response[1..3].copy_from_slice(&index.to_le_bytes());
         response[3] = subindex;
-        self.send_response(response);
-        Ok(())
+
+        Ok(Some(response))
     }
 
-    fn segmented_upload(&mut self, command: u8) -> Result<(), SDOAbortCode> {
+    fn segmented_upload(&mut self, command: u8) -> RequestResult {
         if command & TOGGLE_BIT != self.state.toggle_bit {
             return Err(SDOAbortCode::ToggleBitNotAlternated);
         }
@@ -100,16 +104,38 @@ impl SdoServer<'_> {
         let mut response = [0; 8];
         response[0] = res_command;
         response[1..1 + size].copy_from_slice(&data);
-        self.send_response(response);
-        Ok(())
+        Ok(Some(response))
     }
 
-    fn init_download(&mut self, _request: [u8; 7]) -> Result<(), SDOAbortCode> {
-        Ok(())
+    fn init_download(&mut self, command: u8, request: [u8; 7]) -> RequestResult {
+        // ---------- TODO optimize TODO check if writable
+        let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
+        let subindex = request[2];
+        // ----------
+
+        if command & EXPEDITED != 0 {
+            let size = match command & SIZE_SPECIFIED {
+                0 => 4 - ((command >> 2) & 0x3) as usize,
+                _ => 4,
+            };
+            self.node
+                .set_data(index, subindex, request[4..4 + size].to_vec())?;
+        } else {
+            self.state.buffer.clear();
+            self.state.toggle_bit = 0;
+        }
+
+        // ---------- TODO optimize
+        let mut response = [0; 8];
+        response[0] = RESPONSE_DOWNLOAD;
+        response[1..3].copy_from_slice(&index.to_le_bytes());
+        response[3] = subindex;
+        // ----------
+        Ok(Some(response))
     }
 
-    fn segmented_download(&mut self, _command: u8, _request: [u8; 7]) -> Result<(), SDOAbortCode> {
-        Ok(())
+    fn segmented_download(&mut self, _command: u8, _request: [u8; 7]) -> RequestResult {
+        Ok(None)
     }
 
     fn abort(&mut self, abort_error: SDOAbortCode) {

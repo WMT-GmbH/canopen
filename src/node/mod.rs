@@ -12,10 +12,17 @@ pub struct Node<'a> {
 impl<'a> Node<'a> {
     pub fn get_data(&self, index: u16, _subindex: u8) -> Result<Vec<u8>, SDOAbortCode> {
         let _object = self.find_object(index)?;
+        // TODO check if readable
         if index == 1 {
             return Ok(vec![1, 2, 3, 4]);
         }
         Ok(vec![1, 2, 3, 4, 5])
+    }
+
+    pub fn set_data(&self, index: u16, _subindex: u8, _data: Vec<u8>) -> Result<(), SDOAbortCode> {
+        // TODO check if writable
+        let _object = self.find_object(index)?;
+        Ok(())
     }
 
     fn find_object(&self, index: u16) -> Result<&objectdictionary::Object, SDOAbortCode> {
