@@ -1,6 +1,8 @@
 use core::fmt;
+use std::error::Error;
 
 #[repr(u32)]
+#[derive(Debug)]
 pub enum SDOAbortCode {
     UnknownAbortCode,
     ToggleBitNotAlternated = 0x0503_0000,
@@ -73,6 +75,8 @@ impl From<u32> for SDOAbortCode {
         }
     }
 }
+
+impl Error for SDOAbortCode {}
 
 impl fmt::Display for SDOAbortCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
