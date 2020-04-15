@@ -12,10 +12,20 @@ impl ObjectDictionary {
     }
 
     pub fn add_object(&mut self, object: Object) {
-        let index = match object {
-            Object::Variable { index, .. } => index,
+        let index = match &object {
+            Object::Variable(variable) => variable.index,
+            Object::Array(array) => array.index,
         };
         self.indices.insert(index, object);
+    }
+
+    pub fn add_variable(&mut self, variable: Variable) {
+        self.indices
+            .insert(variable.index, Object::Variable(variable));
+    }
+
+    pub fn add_array(&mut self, array: Array) {
+        self.indices.insert(array.index, Object::Array(array));
     }
 }
 
@@ -26,18 +36,44 @@ impl Index<u16> for ObjectDictionary{
     type Output = Option<&Object>;
 
     fn index(&self, index: u16) -> Self::Output {
-        self.indicies.get(&index)
+        self.indices.get(&index)
     }
 }*/
 
 pub enum Object {
-    Variable { index: u16, subindex: u8 },
+    Variable(Variable),
+    Array(Array),
 }
 
-impl Object {
-    pub fn get_index(&self) -> u16 {
-        match self {
-            Object::Variable { index, .. } => *index,
+pub struct Variable {
+    pub index: u16,
+    pub subindex: u8,
+}
+
+impl Variable {
+    pub fn get_unique_id(&self) -> u32 {
+        ((self.index as u32) << 8) + self.subindex as u32
+    }
+}
+
+pub struct Array {
+    pub index: u16,
+    subindices: BTreeMap<u8, Variable>,
+}
+
+impl Array {
+    pub fn new(index: u16) -> Array {
+        Array {
+            index,
+            subindices: BTreeMap::new(),
         }
+    }
+
+    pub fn get(&self, subindex: u8) -> Option<&Variable> {
+        self.subindices.get(&subindex)
+    }
+
+    pub fn add_variable(&mut self, variable: Variable) {
+        self.subindices.insert(variable.subindex, variable);
     }
 }

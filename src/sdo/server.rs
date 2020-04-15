@@ -30,7 +30,7 @@ impl SdoServer<'_> {
         }
     }
 
-    pub fn on_request(&mut self, _can_id: u32, data: &[u8]) {
+    pub fn on_request(&mut self, data: &[u8]) {
         if data.len() != 8 {
             return;
         }
@@ -115,11 +115,11 @@ impl SdoServer<'_> {
 
         if command & EXPEDITED != 0 {
             let size = match command & SIZE_SPECIFIED {
-                0 => 4 - ((command >> 2) & 0x3) as usize,
-                _ => 4,
+                0 => 4,
+                _ => 4 - ((command >> 2) & 0x3) as usize,
             };
             self.node
-                .set_data(index, subindex, request[4..4 + size].to_vec())?;
+                .set_data(index, subindex, request[3..3 + size].to_vec())?;
         } else {
             self.state.buffer.clear();
             self.state.toggle_bit = 0;
@@ -192,16 +192,23 @@ mod tests {
         let tx_cobid = 420;
 
         let mut od = objectdictionary::ObjectDictionary::default();
-        od.add_object(objectdictionary::Object::Variable {
+        od.add_variable(objectdictionary::Variable {
             index: 1,
             subindex: 0,
         });
-        od.add_object(objectdictionary::Object::Variable {
+        od.add_variable(objectdictionary::Variable {
             index: 2,
             subindex: 0,
         });
 
-        let node = Node { network, od };
+        let mut array = objectdictionary::Array::new(3);
+        array.add_variable(objectdictionary::Variable {
+            index: 3,
+            subindex: 1,
+        });
+        od.add_array(array);
+
+        let node = Node::new(network, od);
 
         SdoServer::new(rx_cobid, tx_cobid, node)
     }
@@ -211,7 +218,7 @@ mod tests {
         let network = MockNetwork::new();
         let mut server = mock_server(&network);
 
-        server.on_request(server.tx_cobid, &[64, 1, 0, 0, 0, 0, 0, 0]);
+        server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
         assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
     }
 
@@ -220,26 +227,50 @@ mod tests {
         let network = MockNetwork::new();
         let mut server = mock_server(&network);
 
-        server.on_request(server.tx_cobid, &[64, 2, 0, 0, 0, 0, 0, 0]);
-        server.on_request(server.tx_cobid, &[96, 0, 0, 0, 0, 0, 0, 0]);
+        server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
+        server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
 
         assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
         assert_eq!(network.sent_messages.borrow()[1], [37, 1, 2, 3, 4, 5, 0, 0]);
     }
 
     #[test]
+    fn test_expedited_download() {
+        let network = MockNetwork::new();
+        let mut server = mock_server(&network);
+
+        server.on_request(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
+        server.on_request(&[39, 2, 0, 0, 1, 2, 3, 4]); // size specified
+
+        assert_eq!(network.sent_messages.borrow()[0], [96, 1, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(network.sent_messages.borrow()[1], [96, 2, 0, 0, 0, 0, 0, 0]);
+
+        assert_eq!(
+            server.node.data_store.get(&256).unwrap(),
+            &vec![1u8, 2, 3, 4]
+        );
+        assert_eq!(server.node.data_store.get(&512).unwrap(), &vec![1u8, 2, 3]);
+    }
+
+    #[test]
     fn test_abort() {
         let network = MockNetwork::new();
         let mut server = mock_server(&network);
-        server.on_request(server.tx_cobid, &[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
-        server.on_request(server.tx_cobid, &[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
+        server.on_request(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
+        server.on_request(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
+        server.on_request(&[64, 3, 0, 2, 0, 0, 0, 0]); // upload invalid subindex
+                                                       // TODO TOGGLE Bit not alternated
         assert_eq!(
             network.sent_messages.borrow()[0],
-            [128, 0, 0, 0, 1, 0, 4, 5]
+            [128, 0, 0, 0, 0x01, 0x00, 0x04, 0x05]
         );
         assert_eq!(
             network.sent_messages.borrow()[1],
-            [128, 0, 0, 0, 0, 0, 2, 6]
+            [128, 0, 0, 0, 0x00, 0x00, 0x02, 0x06]
+        );
+        assert_eq!(
+            network.sent_messages.borrow()[2],
+            [128, 3, 0, 2, 0x11, 0x00, 0x09, 0x06]
         );
     }
 
@@ -249,9 +280,9 @@ mod tests {
 
         let mut server = mock_server(&network);
 
-        server.on_request(server.tx_cobid, &[0; 7]);
-        server.on_request(server.tx_cobid, &[0; 9]);
-        server.on_request(server.tx_cobid, &[]);
+        server.on_request(&[0; 7]);
+        server.on_request(&[0; 9]);
+        server.on_request(&[]);
         assert!(network.sent_messages.borrow().is_empty());
     }
 }
