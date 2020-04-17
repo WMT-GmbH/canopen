@@ -1,5 +1,24 @@
-from collections.abc import MutableMapping, Mapping
+import sys
 import logging
+from pathlib import Path
+
+import eds
+
+
+def generate(eds_file, destination_path: Path, node_id):
+    assert destination_path.parent.exists(), 'Path does not exist'
+    od = eds.import_eds(eds_file, node_id)
+    try:
+        with open(destination_path, 'w') as f:
+            sys.stdout = f
+            print('use canopen::objectdictionary::{Array, ObjectDictionary, Variable};')
+            print('')
+            print('fn get_od() -> ObjectDictionary {')
+            print('    let mut od = ObjectDictionary::default();')
+            print('    od')
+            print('}')
+    finally:
+        sys.stdout = sys.__stdout__
 
 
 BOOLEAN = 0x1
@@ -28,9 +47,7 @@ DATA_TYPES = (VISIBLE_STRING, OCTET_STRING, UNICODE_STRING, DOMAIN)
 logger = logging.getLogger(__name__)
 
 
-class ObjectDictionary(MutableMapping):
-    """Representation of the object dictionary as a Python dictionary."""
-
+class ObjectDictionary:
     def __init__(self):
         self.indices = {}
         self.names = {}
@@ -40,62 +57,19 @@ class ObjectDictionary(MutableMapping):
         self.node_id = None
 
     def __getitem__(self, index):
-        """Get object from object dictionary by name or index."""
         item = self.names.get(index) or self.indices.get(index)
         if item is None:
             name = "0x%X" % index if isinstance(index, int) else index
             raise KeyError("%s was not found in Object Dictionary" % name)
         return item
 
-    def __setitem__(self, index, obj):
-        assert index == obj.index or index == obj.name
-        self.add_object(obj)
-
-    def __delitem__(self, index):
-        obj = self[index]
-        del self.indices[obj.index]
-        del self.names[obj.name]
-
-    def __iter__(self):
-        return iter(sorted(self.indices))
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __contains__(self, index):
-        return index in self.names or index in self.indices
-
     def add_object(self, obj):
-        """Add object to the object dictionary.
-
-        :param obj:
-            Should be either one of
-            :class:`~canopen_lib.objectdictionary.Variable`,
-            :class:`~canopen_lib.objectdictionary.Record`, or
-            :class:`~canopen_lib.objectdictionary.Array`.
-        """
         obj.parent = self
         self.indices[obj.index] = obj
         self.names[obj.name] = obj
 
-    def get_variable(self, index, subindex=0):
-        """Get the variable object at specified index (and subindex if applicable).
 
-        :return: Variable if found, else `None`
-        :rtype: canopen.objectdictionary.Variable
-        """
-        obj = self.get(index)
-        if isinstance(obj, Variable):
-            return obj
-        elif isinstance(obj, (Record, Array)):
-            return obj.get(subindex)
-
-
-class Record(MutableMapping):
-    """Groups multiple :class:`~canopen_lib.objectdictionary.Variable` objects using
-    subindices.
-    """
-
+class Record:
     #: Description for the whole record
     description = ""
 
@@ -109,47 +83,13 @@ class Record(MutableMapping):
         self.subindices = {}
         self.names = {}
 
-    def __getitem__(self, subindex):
-        item = self.names.get(subindex) or self.subindices.get(subindex)
-        if item is None:
-            raise KeyError("Subindex %s was not found" % subindex)
-        return item
-
-    def __setitem__(self, subindex, var):
-        assert subindex == var.subindex
-        self.add_member(var)
-
-    def __delitem__(self, subindex):
-        var = self[subindex]
-        del self.subindices[var.subindex]
-        del self.names[var.name]
-
-    def __len__(self):
-        return len(self.subindices)
-
-    def __iter__(self):
-        return iter(sorted(self.subindices))
-
-    def __contains__(self, subindex):
-        return subindex in self.names or subindex in self.subindices
-
-    def __eq__(self, other):
-        return self.index == other.index
-
     def add_member(self, variable):
-        """Adds a :class:`~canopen_lib.objectdictionary.Variable` to the record."""
         variable.parent = self
         self.subindices[variable.subindex] = variable
         self.names[variable.name] = variable
 
 
-class Array(Mapping):
-    """An array of :class:`~canopen_lib.objectdictionary.Variable` objects using
-    subindices.
-
-    Actual length of array must be read from the node using SDO.
-    """
-
+class Array:
     #: Description for the whole array
     description = ""
 
@@ -183,25 +123,13 @@ class Array(Mapping):
             raise KeyError("Could not find subindex %r" % subindex)
         return var
 
-    def __len__(self):
-        return len(self.subindices)
-
-    def __iter__(self):
-        return iter(sorted(self.subindices))
-
-    def __eq__(self, other):
-        return self.index == other.index
-
     def add_member(self, variable):
-        """Adds a :class:`~canopen_lib.objectdictionary.Variable` to the record."""
         variable.parent = self
         self.subindices[variable.subindex] = variable
         self.names[variable.name] = variable
 
 
 class Variable(object):
-    """Simple variable."""
-
     def __init__(self, name, index, subindex=0):
         #: The :class:`~canopen_lib.ObjectDictionary`,
         #: :class:`~canopen_lib.objectdictionary.Record` or
@@ -235,29 +163,3 @@ class Variable(object):
         self.value_descriptions = {}
         #: Dictionary of bitfield definitions
         self.bit_definitions = {}
-
-    def __eq__(self, other):
-        return (self.index == other.index and
-                self.subindex == other.subindex)
-
-    def __len__(self):
-        if self.data_type in self.STRUCT_TYPES:
-            return self.STRUCT_TYPES[self.data_type].size * 8
-        else:
-            return 8
-
-    def add_value_description(self, value, descr):
-        """Associate a value with a string description.
-
-        :param int value: Value to describe
-        :param str desc: Description of value
-        """
-        self.value_descriptions[value] = descr
-
-    def add_bit_definition(self, name, bits):
-        """Associate bit(s) with a string description.
-
-        :param str name: Name of bit(s)
-        :param list bits: List of bits as integers
-        """
-        self.bit_definitions[name] = bits
