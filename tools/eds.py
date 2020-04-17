@@ -2,7 +2,7 @@ import re
 import logging
 import copy
 from configparser import RawConfigParser, NoOptionError, NoSectionError
-import generate_objectdictionary as objectdictionary
+import objectdictionary
 
 logger = logging.getLogger(__name__)
 
