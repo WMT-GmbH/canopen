@@ -1,11 +1,17 @@
 use canopen::objectdictionary::{Array, ObjectDictionary, Variable};
 
-fn get_od() -> ObjectDictionary {
+pub fn get_od() -> ObjectDictionary {
     let mut od = ObjectDictionary::default();
     od.add_variable(Variable {
-        index: 0x0003,
+        index: 0x0001,
         subindex: 0x00,
-        name: String::from("Dummy0003"),
+        name: String::from("Dummy0001"),
+    });
+
+    od.add_variable(Variable {
+        index: 0x0002,
+        subindex: 0x00,
+        name: String::from("Dummy0002"),
     });
 
     od.add_variable(Variable {
@@ -104,12 +110,10 @@ fn get_od() -> ObjectDictionary {
         name: String::from("Pre-defined error field"),
         members,
     });
-    let members = vec![];
-
     od.add_array(Array {
         index: 0x3003,
         name: String::from("Valve % open"),
-        members,
+        members: vec![],
     });
     let members = vec![
         Variable {

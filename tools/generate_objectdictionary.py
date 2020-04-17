@@ -14,7 +14,7 @@ def generate(eds_file, destination_path: Path, node_id):
             sys.stdout = f
             print('use canopen::objectdictionary::{Array, ObjectDictionary, Variable};')
             print('')
-            print('fn get_od() -> ObjectDictionary {')
+            print('pub fn get_od() -> ObjectDictionary {')
             print('    let mut od = ObjectDictionary::default();')
             for variable in od.variables:
                 generate_variable(variable)
@@ -43,32 +43,34 @@ def generate_array(array: Array, indent=4):
     indent = ' ' * indent
     inner_indent = indent + '    '
 
-    print(indent + 'let members = vec![')
-    for member in array.members:
-        string = (
-            f'Variable {{\n'
-            f'    index: 0x{member.index:04x},\n'
-            f'    subindex: 0x{member.subindex:02x},\n'
-            f'    name: String::from("{member.name}"),\n'
-            f'}},'
-        )
-        print(textwrap.indent(string, inner_indent))
-    print(indent + '];\n')
+    if len(array.members):
+        no_members_string = ''
+        print(indent + 'let members = vec![')
+        for member in array.members:
+            string = (
+                f'Variable {{\n'
+                f'    index: 0x{member.index:04x},\n'
+                f'    subindex: 0x{member.subindex:02x},\n'
+                f'    name: String::from("{member.name}"),\n'
+                f'}},'
+            )
+            print(textwrap.indent(string, inner_indent))
+        print(indent + '];\n')
+    else:
+        no_members_string = ': vec![]'
 
     string = (
         f'od.add_array(Array {{\n'
         f'    index: 0x{array.index:04x},\n'
         f'    name: String::from("{array.name}"),\n'
-        f'    members,\n'
+        f'    members{no_members_string},\n'
         f'}});'
     )
     print(textwrap.indent(string, indent))
 
 
-"""
-        od.add_variable(objectdictionary::Array {
-            index: 3,
-            name: String::from("asfd"),
-            members,
-        });
-"""
+if __name__ == '__main__':
+    EDS_PATH = Path(__file__).parent / 'sample.eds'
+    OUT_PATH = Path(__file__).parent.parent / 'tests' / 'od.rs'
+    generate(EDS_PATH, OUT_PATH, node_id=2)
+

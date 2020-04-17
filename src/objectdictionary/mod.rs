@@ -74,6 +74,6 @@ impl Array {
     }
 
     pub fn get(&self, subindex: u8) -> Option<&Variable> {
-        self.subindices.get(subindex as usize)
+        self.members.get(subindex as usize)
     }
 }

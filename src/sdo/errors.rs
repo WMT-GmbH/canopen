@@ -1,5 +1,4 @@
 use core::fmt;
-use std::error::Error;
 
 #[repr(u32)]
 #[derive(Debug)]
@@ -75,8 +74,6 @@ impl From<u32> for SDOAbortCode {
         }
     }
 }
-
-impl Error for SDOAbortCode {}
 
 impl fmt::Display for SDOAbortCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

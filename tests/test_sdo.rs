@@ -1,0 +1,96 @@
+mod od;
+
+use crate::od::get_od;
+use canopen::network::Network;
+use canopen::node::Node;
+use canopen::sdo::SdoServer;
+use core::cell::RefCell;
+
+#[derive(Default)]
+pub struct MockNetwork {
+    sent_messages: RefCell<Vec<[u8; 8]>>,
+}
+
+impl Network for MockNetwork {
+    fn send_message(&self, _can_id: u32, data: [u8; 8]) {
+        self.sent_messages.borrow_mut().push(data);
+    }
+}
+
+fn mock_server(network: &MockNetwork) -> SdoServer {
+    let rx_cobid = 69;
+    let tx_cobid = 420;
+
+    let od = get_od();
+
+    let node = Node::new(network, od);
+
+    SdoServer::new(rx_cobid, tx_cobid, node)
+}
+
+#[test]
+fn test_expedited_upload() {
+    let network = MockNetwork::default();
+    let mut server = mock_server(&network);
+
+    server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn test_segmented_upload() {
+    let network = MockNetwork::default();
+    let mut server = mock_server(&network);
+
+    server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
+    server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
+
+    assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
+    assert_eq!(network.sent_messages.borrow()[1], [37, 1, 2, 3, 4, 5, 0, 0]);
+}
+
+#[test]
+fn test_expedited_download() {
+    let network = MockNetwork::default();
+    let mut server = mock_server(&network);
+
+    server.on_request(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
+    server.on_request(&[39, 2, 0, 0, 1, 2, 3, 4]); // size specified
+
+    assert_eq!(network.sent_messages.borrow()[0], [96, 1, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(network.sent_messages.borrow()[1], [96, 2, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_abort() {
+    let network = MockNetwork::default();
+    let mut server = mock_server(&network);
+    server.on_request(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
+    server.on_request(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
+    server.on_request(&[64, 3, 48, 2, 0, 0, 0, 0]); // upload invalid subindex
+                                                    // TODO TOGGLE Bit not alternated
+    assert_eq!(
+        network.sent_messages.borrow()[0],
+        [128, 0, 0, 0, 0x01, 0x00, 0x04, 0x05]
+    );
+    assert_eq!(
+        network.sent_messages.borrow()[1],
+        [128, 0, 0, 0, 0x00, 0x00, 0x02, 0x06]
+    );
+    assert_eq!(
+        network.sent_messages.borrow()[2],
+        [128, 3, 48, 2, 0x11, 0x00, 0x09, 0x06]
+    );
+}
+
+#[test]
+fn test_bad_data() {
+    let network = MockNetwork::default();
+
+    let mut server = mock_server(&network);
+
+    server.on_request(&[0; 7]);
+    server.on_request(&[0; 9]);
+    server.on_request(&[]);
+    assert!(network.sent_messages.borrow().is_empty());
+}
