@@ -1,13 +1,8 @@
 import re
-import io
 import logging
 import copy
-try:
-    from configparser import RawConfigParser, NoOptionError, NoSectionError
-except ImportError:
-    from ConfigParser import RawConfigParser, NoOptionError, NoSectionError
-from canopen import objectdictionary
-from canopen.sdo import SdoClient
+from configparser import RawConfigParser, NoOptionError, NoSectionError
+import generate_objectdictionary as objectdictionary
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +18,7 @@ def import_eds(source, node_id):
         fp = source
     else:
         fp = open(source)
-    try:
-        # Python 3
-        eds.read_file(fp)
-    except AttributeError:
-        # Python 2
-        eds.readfp(fp)
+    eds.read_file(fp)
     fp.close()
     od = objectdictionary.ObjectDictionary()
     if eds.has_section("DeviceComissioning"):
@@ -104,29 +94,6 @@ def import_eds(source, node_id):
                 if var is not None:
                     entry.add_member(var)
 
-    return od
-
-
-def import_from_node(node_id, network):
-    """ Download the configuration from the remote node
-    :param int node_id: Identifier of the node
-    :param network: network object
-    """
-    # Create temporary SDO client
-    sdo_client = SdoClient(0x600 + node_id, 0x580 + node_id, None)
-    sdo_client.network = network
-    # Subscribe to SDO responses
-    network.subscribe(0x580 + node_id, sdo_client.on_response)
-    # Create file like object for Store EDS variable
-    try:
-        eds_fp = sdo_client.open(0x1021, 0, "rt")
-        od = import_eds(eds_fp, node_id)
-    except Exception as e:
-        logger.error("No object dictionary could be loaded for node %d: %s",
-                     node_id, e)
-        od = None
-    finally:
-        network.unsubscribe(0x580 + node_id)
     return od
 
 
