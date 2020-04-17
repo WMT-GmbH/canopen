@@ -33,6 +33,14 @@ class ObjectDictionary:
     def __getitem__(self, index):
         return self.indices[index]
 
+    @property
+    def variables(self):
+        return [var for var in [self.indices[index] for index in sorted(self.indices)] if isinstance(var, Variable)]
+
+    @property
+    def arrays(self):
+        return [var for var in [self.indices[index] for index in sorted(self.indices)] if isinstance(var, Array)]
+
     def add_object(self, obj):
         self.indices[obj.index] = obj
 
@@ -67,6 +75,10 @@ class Array:
     def __getitem__(self, subindex):
         return self.subindices[subindex]
 
+    @property
+    def members(self):
+        return [self.subindices[index] for index in sorted(self.subindices)]
+
     def add_member(self, variable):
         self.subindices[variable.subindex] = variable
 
@@ -78,7 +90,7 @@ class Variable(object):
         #: 8-bit sub-index of the object in the dictionary
         self.subindex = subindex
         #: String representation of the variable
-        self.name = name
+        self.name: str = name
         #: Physical unit
         self.unit = ""
         #: Factor between physical unit and integer value

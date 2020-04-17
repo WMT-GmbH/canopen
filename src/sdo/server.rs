@@ -167,6 +167,7 @@ mod tests {
     use crate::network::Network;
     use crate::node::Node;
     use crate::objectdictionary;
+    use alloc::string::String;
     use core::cell::RefCell;
 
     pub struct MockNetwork {
@@ -195,23 +196,31 @@ mod tests {
         od.add_variable(objectdictionary::Variable {
             index: 1,
             subindex: 0,
+            name: String::new(),
         });
         od.add_variable(objectdictionary::Variable {
             index: 2,
             subindex: 0,
+            name: String::new(),
         });
 
-        let array_content = vec![
+        let members = vec![
             objectdictionary::Variable {
                 index: 3,
                 subindex: 0,
+                name: String::new(),
             },
             objectdictionary::Variable {
                 index: 3,
                 subindex: 1,
+                name: String::new(),
             },
         ];
-        let array = objectdictionary::Array::new(3, array_content);
+        let array = objectdictionary::Array {
+            index: 3,
+            name: String::from("asfd"),
+            members,
+        };
         od.add_array(array);
 
         let node = Node::new(network, od);

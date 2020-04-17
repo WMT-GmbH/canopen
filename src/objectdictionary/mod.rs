@@ -1,4 +1,5 @@
 use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 #[derive(Default)]
@@ -48,6 +49,7 @@ pub enum Object {
 pub struct Variable {
     pub index: u16,
     pub subindex: u8,
+    pub name: String,
 }
 
 impl Variable {
@@ -58,12 +60,17 @@ impl Variable {
 
 pub struct Array {
     pub index: u16,
-    subindices: Vec<Variable>,
+    pub name: String,
+    pub members: Vec<Variable>,
 }
 
 impl Array {
-    pub fn new(index: u16, subindices: Vec<Variable>) -> Array {
-        Array { index, subindices }
+    pub fn new(index: u16, name: String, members: Vec<Variable>) -> Array {
+        Array {
+            index,
+            name,
+            members,
+        }
     }
 
     pub fn get(&self, subindex: u8) -> Option<&Variable> {
