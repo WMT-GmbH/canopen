@@ -1,6 +1,6 @@
 use super::*;
-// use alloc::vec::Vec;
 use crate::sdo::errors::SDOAbortCode;
+use alloc::vec::Vec;
 use core::convert::TryInto;
 
 pub struct SdoServer<'a> {
@@ -201,11 +201,17 @@ mod tests {
             subindex: 0,
         });
 
-        let mut array = objectdictionary::Array::new(3);
-        array.add_variable(objectdictionary::Variable {
-            index: 3,
-            subindex: 1,
-        });
+        let array_content = vec![
+            objectdictionary::Variable {
+                index: 3,
+                subindex: 0,
+            },
+            objectdictionary::Variable {
+                index: 3,
+                subindex: 1,
+            },
+        ];
+        let array = objectdictionary::Array::new(3, array_content);
         od.add_array(array);
 
         let node = Node::new(network, od);

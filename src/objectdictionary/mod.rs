@@ -1,5 +1,5 @@
-//use alloc::collections::BTreeMap;
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 #[derive(Default)]
 pub struct ObjectDictionary {
@@ -58,22 +58,15 @@ impl Variable {
 
 pub struct Array {
     pub index: u16,
-    subindices: BTreeMap<u8, Variable>,
+    subindices: Vec<Variable>,
 }
 
 impl Array {
-    pub fn new(index: u16) -> Array {
-        Array {
-            index,
-            subindices: BTreeMap::new(),
-        }
+    pub fn new(index: u16, subindices: Vec<Variable>) -> Array {
+        Array { index, subindices }
     }
 
     pub fn get(&self, subindex: u8) -> Option<&Variable> {
-        self.subindices.get(&subindex)
-    }
-
-    pub fn add_variable(&mut self, variable: Variable) {
-        self.subindices.insert(variable.subindex, variable);
+        self.subindices.get(subindex as usize)
     }
 }
