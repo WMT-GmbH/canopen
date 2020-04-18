@@ -1,10 +1,10 @@
 mod od;
 
 use crate::od::get_od;
-use canopen::network::Network;
-use canopen::node::Node;
-use canopen::sdo::SdoServer;
 use core::cell::RefCell;
+
+use canopen::LocalNode;
+use canopen::Network;
 
 #[derive(Default)]
 pub struct MockNetwork {
@@ -17,33 +17,24 @@ impl Network for MockNetwork {
     }
 }
 
-fn mock_server(network: &MockNetwork) -> SdoServer {
-    let rx_cobid = 69;
-    let tx_cobid = 420;
-
-    let od = get_od();
-
-    let node = Node::new(network, od);
-
-    SdoServer::new(rx_cobid, tx_cobid, node)
-}
-
 #[test]
 fn test_expedited_upload() {
     let network = MockNetwork::default();
-    let mut server = mock_server(&network);
+    let od = get_od();
+    let mut node = LocalNode::new(2, &network, &od);
 
-    server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
+    node.sdo_server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
 }
 
 #[test]
 fn test_segmented_upload() {
     let network = MockNetwork::default();
-    let mut server = mock_server(&network);
+    let od = get_od();
+    let mut node = LocalNode::new(2, &network, &od);
 
-    server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
-    server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
+    node.sdo_server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
+    node.sdo_server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
 
     assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[1], [37, 1, 2, 3, 4, 5, 0, 0]);
@@ -52,10 +43,11 @@ fn test_segmented_upload() {
 #[test]
 fn test_expedited_download() {
     let network = MockNetwork::default();
-    let mut server = mock_server(&network);
+    let od = get_od();
+    let mut node = LocalNode::new(2, &network, &od);
 
-    server.on_request(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
-    server.on_request(&[39, 2, 0, 0, 1, 2, 3, 4]); // size specified
+    node.sdo_server.on_request(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
+    node.sdo_server.on_request(&[39, 2, 0, 0, 1, 2, 3, 4]); // size specified
 
     assert_eq!(network.sent_messages.borrow()[0], [96, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[1], [96, 2, 0, 0, 0, 0, 0, 0]);
@@ -64,11 +56,12 @@ fn test_expedited_download() {
 #[test]
 fn test_abort() {
     let network = MockNetwork::default();
-    let mut server = mock_server(&network);
-    server.on_request(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
-    server.on_request(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
-    server.on_request(&[64, 3, 48, 2, 0, 0, 0, 0]); // upload invalid subindex
-                                                    // TODO TOGGLE Bit not alternated
+    let od = get_od();
+    let mut node = LocalNode::new(2, &network, &od);
+    node.sdo_server.on_request(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
+    node.sdo_server.on_request(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
+    node.sdo_server.on_request(&[64, 3, 48, 2, 0, 0, 0, 0]); // upload invalid subindex
+                                                             // TODO TOGGLE Bit not alternated
     assert_eq!(
         network.sent_messages.borrow()[0],
         [128, 0, 0, 0, 0x01, 0x00, 0x04, 0x05]
@@ -87,10 +80,11 @@ fn test_abort() {
 fn test_bad_data() {
     let network = MockNetwork::default();
 
-    let mut server = mock_server(&network);
+    let od = get_od();
+    let mut node = LocalNode::new(2, &network, &od);
 
-    server.on_request(&[0; 7]);
-    server.on_request(&[0; 9]);
-    server.on_request(&[]);
+    node.sdo_server.on_request(&[0; 7]);
+    node.sdo_server.on_request(&[0; 9]);
+    node.sdo_server.on_request(&[]);
     assert!(network.sent_messages.borrow().is_empty());
 }

@@ -6,6 +6,10 @@ pub mod node;
 pub mod objectdictionary;
 pub mod sdo;
 
+pub use network::Network;
+pub use node::LocalNode;
+pub use objectdictionary::ObjectDictionary;
+
 #[cfg(test)]
 #[macro_use]
 extern crate std;

@@ -4,8 +4,6 @@ pub use server::SdoServer;
 pub mod errors;
 pub use errors::SDOAbortCode;
 
-use crate::node;
-
 const REQUEST_SEGMENT_DOWNLOAD: u8 = 0 << 5;
 const REQUEST_DOWNLOAD: u8 = 1 << 5;
 const REQUEST_UPLOAD: u8 = 2 << 5;

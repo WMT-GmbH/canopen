@@ -1,14 +1,12 @@
-use super::*;
-use crate::sdo::errors::SDOAbortCode;
 use alloc::vec::Vec;
 use core::convert::TryInto;
 
-pub struct SdoServer<'a> {
-    _rx_cobid: u32,
-    tx_cobid: u32,
-    node: node::Node<'a>,
-    state: State,
-}
+use super::*;
+use crate::objectdictionary::{Object, ObjectDictionary, Variable};
+use crate::sdo::errors::SDOAbortCode;
+use crate::Network;
+
+type RequestResult = Result<Option<[u8; 8]>, SDOAbortCode>;
 
 #[derive(Default)]
 struct State {
@@ -18,14 +16,26 @@ struct State {
     buffer: Vec<u8>,
 }
 
-type RequestResult = Result<Option<[u8; 8]>, SDOAbortCode>;
+pub struct SdoServer<'a, 'b> {
+    _rx_cobid: u32,
+    tx_cobid: u32,
+    network: &'a dyn Network,
+    od: &'b ObjectDictionary,
+    state: State,
+}
 
-impl SdoServer<'_> {
-    pub fn new(rx_cobid: u32, tx_cobid: u32, node: node::Node) -> SdoServer {
+impl<'a, 'b> SdoServer<'a, 'b> {
+    pub fn new(
+        rx_cobid: u32,
+        tx_cobid: u32,
+        network: &'a dyn Network,
+        od: &'b ObjectDictionary,
+    ) -> SdoServer<'a, 'b> {
         SdoServer {
             _rx_cobid: rx_cobid,
             tx_cobid,
-            node,
+            network,
+            od,
             state: State::default(),
         }
     }
@@ -62,7 +72,7 @@ impl SdoServer<'_> {
         self.state.index = index;
         self.state.subindex = subindex;
 
-        let data = self.node.get_data(index, subindex)?;
+        let data = self.get_data(index, subindex)?;
         let mut res_command = RESPONSE_UPLOAD | SIZE_SPECIFIED;
         let mut response = [0; 8];
 
@@ -118,8 +128,7 @@ impl SdoServer<'_> {
                 0 => 4,
                 _ => 4 - ((command >> 2) & 0x3) as usize,
             };
-            self.node
-                .set_data(index, subindex, request[3..3 + size].to_vec())?;
+            self.set_data(index, subindex, request[3..3 + size].to_vec())?;
         } else {
             self.state.buffer.clear();
             self.state.toggle_bit = 0;
@@ -157,6 +166,38 @@ impl SdoServer<'_> {
     }
 
     fn send_response(&mut self, data: [u8; 8]) {
-        self.node.network.send_message(self.tx_cobid, data);
+        self.network.send_message(self.tx_cobid, data);
+    }
+
+    pub fn get_data(&self, index: u16, subindex: u8) -> Result<Vec<u8>, SDOAbortCode> {
+        let _variable = self.find_variable(index, subindex)?;
+        // TODO check if readable
+        if index == 1 {
+            return Ok(vec![1, 2, 3, 4]);
+        }
+        Ok(vec![1, 2, 3, 4, 5])
+    }
+
+    pub fn set_data(
+        &mut self,
+        index: u16,
+        subindex: u8,
+        _data: Vec<u8>,
+    ) -> Result<(), SDOAbortCode> {
+        // TODO check if writable
+        let variable = self.find_variable(index, subindex)?;
+        let _id = variable.get_unique_id();
+        Ok(())
+    }
+
+    fn find_variable(&self, index: u16, subindex: u8) -> Result<&Variable, SDOAbortCode> {
+        let object = self.od.get(index).ok_or(SDOAbortCode::ObjectDoesNotExist)?;
+
+        match object {
+            Object::Variable(variable) => Ok(variable),
+            Object::Array(array) => Ok(array
+                .get(subindex)
+                .ok_or(SDOAbortCode::SubindexDoesNotExist)?),
+        }
     }
 }
