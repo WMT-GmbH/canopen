@@ -12,7 +12,7 @@ const REQUEST_ABORTED: u8 = 4 << 5;
 const _REQUEST_BLOCK_UPLOAD: u8 = 5 << 5;
 const _REQUEST_BLOCK_DOWNLOAD: u8 = 6 << 5;
 
-const _RESPONSE_SEGMENT_UPLOAD: u8 = 0 << 5;
+const RESPONSE_SEGMENT_UPLOAD: u8 = 0 << 5;
 const RESPONSE_SEGMENT_DOWNLOAD: u8 = 1 << 5;
 const RESPONSE_UPLOAD: u8 = 2 << 5;
 const RESPONSE_DOWNLOAD: u8 = 3 << 5;

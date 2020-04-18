@@ -37,7 +37,7 @@ fn test_segmented_upload() {
     node.sdo_server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
 
     assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
-    assert_eq!(network.sent_messages.borrow()[1], [37, 1, 2, 3, 4, 5, 0, 0]);
+    assert_eq!(network.sent_messages.borrow()[1], [5, 1, 2, 3, 4, 5, 0, 0]);
 }
 
 #[test]

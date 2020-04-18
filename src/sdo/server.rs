@@ -101,7 +101,7 @@ impl<'a, 'b> SdoServer<'a, 'b> {
 
         let size = self.state.buffer.len().min(7);
         let data: Vec<u8> = self.state.buffer.drain(..size).collect();
-        let mut res_command = RESPONSE_SEGMENT_DOWNLOAD;
+        let mut res_command = RESPONSE_SEGMENT_UPLOAD;
         res_command |= self.state.toggle_bit; // add toggle bit
         res_command |= (7 - size as u8) << 1; // add nof bytes not used
 
@@ -143,8 +143,26 @@ impl<'a, 'b> SdoServer<'a, 'b> {
         Ok(Some(response))
     }
 
-    fn segmented_download(&mut self, _command: u8, _request: [u8; 7]) -> RequestResult {
-        Ok(None)
+    fn segmented_download(&mut self, command: u8, request: [u8; 7]) -> RequestResult {
+        if command & TOGGLE_BIT != self.state.toggle_bit {
+            return Err(SDOAbortCode::ToggleBitNotAlternated);
+        }
+        let last_byte = (8 - ((command >> 1) & 0x7)) as usize;
+        self.state.buffer.extend_from_slice(&request[1..last_byte]);
+
+        if command & NO_MORE_DATA != 0 {
+            self.set_data(
+                self.state.index,
+                self.state.subindex,
+                self.state.buffer.to_vec(),
+            )?;
+        }
+
+        let res_command = RESPONSE_SEGMENT_DOWNLOAD | self.state.toggle_bit;
+        let response = [res_command, 0, 0, 0, 0, 0, 0, 0];
+        self.state.toggle_bit ^= TOGGLE_BIT;
+
+        Ok(Some(response))
     }
 
     fn abort(&mut self, abort_error: SDOAbortCode) {
