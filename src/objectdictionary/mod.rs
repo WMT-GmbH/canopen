@@ -1,3 +1,7 @@
+pub mod data_store;
+
+pub use data_store::DataStore;
+
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;

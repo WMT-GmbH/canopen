@@ -3,6 +3,8 @@ mod od;
 use crate::od::get_od;
 use core::cell::RefCell;
 
+use canopen::objectdictionary::data_store::DataLink;
+use canopen::objectdictionary::{Object, Variable};
 use canopen::LocalNode;
 use canopen::Network;
 
@@ -23,6 +25,14 @@ fn test_expedited_upload() {
     let od = get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
+    let var1 = match od.get(1).unwrap() {
+        Object::Variable(var) => var,
+        Object::Array(_) => panic!(),
+    };
+    node.sdo_server
+        .data_store
+        .add_data_link(var1, DataLink::Value(RefCell::new(vec![1, 2, 3, 4])));
+
     node.sdo_server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
 }
@@ -32,6 +42,14 @@ fn test_segmented_upload() {
     let network = MockNetwork::default();
     let od = get_od();
     let mut node = LocalNode::new(2, &network, &od);
+
+    let var2 = match od.get(2).unwrap() {
+        Object::Variable(var) => var,
+        Object::Array(_) => panic!(),
+    };
+    node.sdo_server
+        .data_store
+        .add_data_link(var2, DataLink::Value(RefCell::new(vec![1, 2, 3, 4, 5])));
 
     node.sdo_server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
     node.sdo_server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);

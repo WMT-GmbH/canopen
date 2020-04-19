@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 use super::*;
-use crate::objectdictionary::{Object, ObjectDictionary, Variable};
+use crate::objectdictionary::{DataStore, Object, ObjectDictionary, Variable};
 use crate::sdo::errors::SDOAbortCode;
 use crate::Network;
 
@@ -16,27 +16,29 @@ struct State {
     buffer: Vec<u8>,
 }
 
-pub struct SdoServer<'a, 'b> {
+pub struct SdoServer<'n, 'o> {
+    pub data_store: DataStore,
     _rx_cobid: u32,
     tx_cobid: u32,
-    network: &'a dyn Network,
-    od: &'b ObjectDictionary,
+    network: &'n dyn Network,
+    od: &'o ObjectDictionary,
     state: State,
 }
 
-impl<'a, 'b> SdoServer<'a, 'b> {
+impl<'n, 'o> SdoServer<'n, 'o> {
     pub fn new(
         rx_cobid: u32,
         tx_cobid: u32,
-        network: &'a dyn Network,
-        od: &'b ObjectDictionary,
-    ) -> SdoServer<'a, 'b> {
+        network: &'n dyn Network,
+        od: &'o ObjectDictionary,
+    ) -> SdoServer<'n, 'o> {
         SdoServer {
             _rx_cobid: rx_cobid,
             tx_cobid,
             network,
             od,
             state: State::default(),
+            data_store: DataStore::default(),
         }
     }
 
@@ -188,27 +190,22 @@ impl<'a, 'b> SdoServer<'a, 'b> {
     }
 
     pub fn get_data(&self, index: u16, subindex: u8) -> Result<Vec<u8>, SDOAbortCode> {
-        let _variable = self.find_variable(index, subindex)?;
-        // TODO check if readable
-        if index == 1 {
-            return Ok(vec![1, 2, 3, 4]);
-        }
-        Ok(vec![1, 2, 3, 4, 5])
+        let variable = self.find_variable(index, subindex)?;
+        self.data_store.get_data(variable)
     }
 
     pub fn set_data(
         &mut self,
         index: u16,
         subindex: u8,
-        _data: Vec<u8>,
+        data: Vec<u8>,
     ) -> Result<(), SDOAbortCode> {
         // TODO check if writable
         let variable = self.find_variable(index, subindex)?;
-        let _id = variable.get_unique_id();
-        Ok(())
+        self.data_store.set_data(variable, data)
     }
 
-    fn find_variable(&self, index: u16, subindex: u8) -> Result<&Variable, SDOAbortCode> {
+    fn find_variable(&self, index: u16, subindex: u8) -> Result<&'o Variable, SDOAbortCode> {
         let object = self.od.get(index).ok_or(SDOAbortCode::ObjectDoesNotExist)?;
 
         match object {
