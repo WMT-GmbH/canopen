@@ -75,98 +75,89 @@ pub const OD_SENSOR_SAMPLING_RATE_HZ: Variable = Variable {
     subindex: 0x00,
 };
 
+pub const OD_PRE_DEFINED_ERROR_FIELD_NUMBER_OF_ENTRIES: Variable = Variable {
+    index: 0x1003,
+    subindex: 0x00,
+};
+
+pub const OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD: Variable = Variable {
+    index: 0x1003,
+    subindex: 0x01,
+};
+
+pub const OD_SENSOR_STATUS_NUMBER_OF_ENTRIES: Variable = Variable {
+    index: 0x3004,
+    subindex: 0x00,
+};
+
+pub const OD_SENSOR_STATUS_SENSOR_STATUS_1: Variable = Variable {
+    index: 0x3004,
+    subindex: 0x01,
+};
+
+pub const OD_SENSOR_STATUS_SENSOR_STATUS_2: Variable = Variable {
+    index: 0x3004,
+    subindex: 0x02,
+};
+
+pub const OD_SENSOR_STATUS_SENSOR_STATUS_3: Variable = Variable {
+    index: 0x3004,
+    subindex: 0x03,
+};
+
+pub const OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES: Variable = Variable {
+    index: 0x3006,
+    subindex: 0x00,
+};
+
+pub const OD_VALVE_1__OPEN_VALVE_1__OPEN: Variable = Variable {
+    index: 0x3006,
+    subindex: 0x01,
+};
+
 pub fn get_od() -> ObjectDictionary {
     let mut od = ObjectDictionary::default();
     od.add_variable(OD_DUMMY0001);
-
     od.add_variable(OD_DUMMY0002);
-
     od.add_variable(OD_DEVICE_TYPE);
-
     od.add_variable(OD_ERROR_REGISTER);
-
     od.add_variable(OD_MANUFACTURER_DEVICE_NAME);
-
     od.add_variable(OD_PRODUCER_HEARTBEAT_TIME);
-
     od.add_variable(OD_WRITABLE_STRING);
-
     od.add_variable(OD_INTEGER16_VALUE);
-
     od.add_variable(OD_UNSIGNED8_VALUE);
-
     od.add_variable(OD_INTEGER8_VALUE);
-
     od.add_variable(OD_INTEGER32_VALUE);
-
     od.add_variable(OD_BOOLEAN_VALUE);
-
     od.add_variable(OD_BOOLEAN_VALUE_2);
-
     od.add_variable(OD_COMPLEX_DATA_TYPE);
-
     od.add_variable(OD_SENSOR_SAMPLING_RATE_HZ);
-
-    let members = vec![
-        Variable {
-            index: 0x1003,
-            subindex: 0x00,
-        },
-        Variable {
-            index: 0x1003,
-            subindex: 0x01,
-        },
-    ];
-
     od.add_array(Array {
         index: 0x1003,
-        name: String::from("Pre-defined error field"),
-        members,
+        members: vec![
+            OD_PRE_DEFINED_ERROR_FIELD_NUMBER_OF_ENTRIES,
+            OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD,
+        ],
     });
     od.add_array(Array {
         index: 0x3003,
-        name: String::from("Valve % open"),
         members: vec![],
     });
-    let members = vec![
-        Variable {
-            index: 0x3004,
-            subindex: 0x00,
-        },
-        Variable {
-            index: 0x3004,
-            subindex: 0x01,
-        },
-        Variable {
-            index: 0x3004,
-            subindex: 0x02,
-        },
-        Variable {
-            index: 0x3004,
-            subindex: 0x03,
-        },
-    ];
-
     od.add_array(Array {
         index: 0x3004,
-        name: String::from("Sensor Status"),
-        members,
+        members: vec![
+            OD_SENSOR_STATUS_NUMBER_OF_ENTRIES,
+            OD_SENSOR_STATUS_SENSOR_STATUS_1,
+            OD_SENSOR_STATUS_SENSOR_STATUS_2,
+            OD_SENSOR_STATUS_SENSOR_STATUS_3,
+        ],
     });
-    let members = vec![
-        Variable {
-            index: 0x3006,
-            subindex: 0x00,
-        },
-        Variable {
-            index: 0x3006,
-            subindex: 0x01,
-        },
-    ];
-
     od.add_array(Array {
         index: 0x3006,
-        name: String::from("Valve 1 % Open"),
-        members,
+        members: vec![
+            OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES,
+            OD_VALVE_1__OPEN_VALVE_1__OPEN,
+        ],
     });
     od
 }

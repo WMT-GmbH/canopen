@@ -15,12 +15,13 @@ def generate(eds_file, destination_path: Path, node_id):
             print('use canopen::objectdictionary::{Array, ObjectDictionary, Variable};')
             print()
             variable_names = [generate_variable(variable) for variable in od.variables]
+            array_members = {array: generate_array_variables(array) for array in od.arrays}
             print('pub fn get_od() -> ObjectDictionary {')
             print('    let mut od = ObjectDictionary::default();')
             for variable in variable_names:
                 add_variable(variable)
-            for array in od.arrays:
-                generate_array(array)
+            for array, members in array_members.items():
+                add_array(array, members)
             print('    od')
             print('}')
     finally:
@@ -28,7 +29,12 @@ def generate(eds_file, destination_path: Path, node_id):
 
 
 def generate_variable(variable: Variable):
-    name = 'OD_' + variable.name.upper().replace(' ', '_').replace('(', '').replace(')', '')
+    name = 'OD_' + variable.name.upper()\
+        .replace(' ', '_')\
+        .replace('(', '')\
+        .replace(')', '')\
+        .replace('-', '_')\
+        .replace('%', '')
     string = (
         f'pub const {name}: Variable = Variable {{\n'
         f'    index: 0x{variable.index:04x},\n'
@@ -39,39 +45,34 @@ def generate_variable(variable: Variable):
     return name
 
 
+def generate_array_variables(array: Array):
+    members = []
+    for variable in array.members:
+        variable.name = array.name + '_' + variable.name
+        members.append(generate_variable(variable))
+    return members
+
+
 def add_variable(variable_name: str, indent=4):
     indent = ' ' * indent
-
-    string = (
-        f'od.add_variable({variable_name});\n'
-    )
-    print(textwrap.indent(string, indent))
+    print(indent + f'od.add_variable({variable_name});')
 
 
-def generate_array(array: Array, indent=4):
+def add_array(array: Array, member_names: list, indent=4):
     indent = ' ' * indent
-    inner_indent = indent + '    '
 
-    if len(array.members):
-        no_members_string = ''
-        print(indent + 'let members = vec![')
-        for member in array.members:
-            string = (
-                f'Variable {{\n'
-                f'    index: 0x{member.index:04x},\n'
-                f'    subindex: 0x{member.subindex:02x},\n'
-                f'}},'
-            )
-            print(textwrap.indent(string, inner_indent))
-        print(indent + '];\n')
+    if member_names:
+        member_string = '\n'
+        for member_name in member_names:
+            member_string += indent + ' ' * 4 + member_name + ',\n'
+        member_string += indent
     else:
-        no_members_string = ': vec![]'
+        member_string = ''
 
     string = (
         f'od.add_array(Array {{\n'
         f'    index: 0x{array.index:04x},\n'
-        f'    name: String::from("{array.name}"),\n'
-        f'    members{no_members_string},\n'
+        f'    members: vec![{member_string}]\n'
         f'}});'
     )
     print(textwrap.indent(string, indent))

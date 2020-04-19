@@ -4,7 +4,6 @@ pub use data_store::DataLink::{CallbackDataLink, RefCellDataLink};
 pub use data_store::DataStore;
 
 use alloc::collections::BTreeMap;
-use alloc::string::String;
 use alloc::vec::Vec;
 
 #[derive(Default)]
@@ -64,19 +63,10 @@ impl Variable {
 
 pub struct Array {
     pub index: u16,
-    pub name: String,
     pub members: Vec<Variable>,
 }
 
 impl Array {
-    pub fn new(index: u16, name: String, members: Vec<Variable>) -> Array {
-        Array {
-            index,
-            name,
-            members,
-        }
-    }
-
     pub fn get(&self, subindex: u8) -> Option<&Variable> {
         self.members.get(subindex as usize)
     }
