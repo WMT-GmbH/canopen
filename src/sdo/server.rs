@@ -17,7 +17,6 @@ struct State {
 }
 
 pub struct SdoServer<'n, 'o> {
-    pub data_store: DataStore,
     _rx_cobid: u32,
     tx_cobid: u32,
     network: &'n dyn Network,
@@ -38,11 +37,10 @@ impl<'n, 'o> SdoServer<'n, 'o> {
             network,
             od,
             state: State::default(),
-            data_store: DataStore::default(),
         }
     }
 
-    pub fn on_request(&mut self, data: &[u8]) {
+    pub fn on_request(&mut self, data_store: &mut DataStore, data: &[u8]) {
         if data.len() != 8 {
             return;
         }
@@ -54,10 +52,10 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         // TODO result could be Result<Frame, SDOAbortCode>
         // then call send_response from here
         let result = match ccs {
-            REQUEST_UPLOAD => self.init_upload(request),
+            REQUEST_UPLOAD => self.init_upload(request, data_store),
             REQUEST_SEGMENT_UPLOAD => self.segmented_upload(command),
-            REQUEST_DOWNLOAD => self.init_download(command, request),
-            REQUEST_SEGMENT_DOWNLOAD => self.segmented_download(command, request),
+            REQUEST_DOWNLOAD => self.init_download(command, request, data_store),
+            REQUEST_SEGMENT_DOWNLOAD => self.segmented_download(command, request, data_store),
             REQUEST_ABORTED => Ok(None),
             _ => Err(SDOAbortCode::CommandSpecifierError),
         };
@@ -68,13 +66,13 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         };
     }
 
-    fn init_upload(&mut self, request: [u8; 7]) -> RequestResult {
+    fn init_upload(&mut self, request: [u8; 7], data_store: &DataStore) -> RequestResult {
         let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
         let subindex = request[2];
         self.state.index = index;
         self.state.subindex = subindex;
 
-        let data = self.get_data(index, subindex)?;
+        let data = self.get_data(index, subindex, data_store)?;
         let mut res_command = RESPONSE_UPLOAD | SIZE_SPECIFIED;
         let mut response = [0; 8];
 
@@ -119,7 +117,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         Ok(Some(response))
     }
 
-    fn init_download(&mut self, command: u8, request: [u8; 7]) -> RequestResult {
+    fn init_download(&mut self, command: u8, request: [u8; 7], data_store: &mut DataStore) -> RequestResult {
         // ---------- TODO optimize TODO check if writable
         let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
         let subindex = request[2];
@@ -130,7 +128,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
                 0 => 4,
                 _ => 4 - ((command >> 2) & 0x3) as usize,
             };
-            self.set_data(index, subindex, request[3..3 + size].to_vec())?;
+            self.set_data(index, subindex, request[3..3 + size].to_vec(), data_store)?;
         } else {
             self.state.buffer.clear();
             self.state.toggle_bit = 0;
@@ -145,7 +143,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         Ok(Some(response))
     }
 
-    fn segmented_download(&mut self, command: u8, request: [u8; 7]) -> RequestResult {
+    fn segmented_download(&mut self, command: u8, request: [u8; 7], data_store: &mut DataStore) -> RequestResult {
         if command & TOGGLE_BIT != self.state.toggle_bit {
             return Err(SDOAbortCode::ToggleBitNotAlternated);
         }
@@ -157,6 +155,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
                 self.state.index,
                 self.state.subindex,
                 self.state.buffer.to_vec(),
+                data_store,
             )?;
         }
 
@@ -189,9 +188,9 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         self.network.send_message(self.tx_cobid, data);
     }
 
-    pub fn get_data(&self, index: u16, subindex: u8) -> Result<Vec<u8>, SDOAbortCode> {
+    pub fn get_data(&self, index: u16, subindex: u8, data_store: &DataStore) -> Result<Vec<u8>, SDOAbortCode> {
         let variable = self.find_variable(index, subindex)?;
-        self.data_store.get_data(variable)
+        data_store.get_data(variable)
     }
 
     pub fn set_data(
@@ -199,10 +198,11 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         index: u16,
         subindex: u8,
         data: Vec<u8>,
+        data_store: &mut DataStore
     ) -> Result<(), SDOAbortCode> {
         // TODO check if writable
         let variable = self.find_variable(index, subindex)?;
-        self.data_store.set_data(variable, data)
+        data_store.set_data(variable, data)
     }
 
     fn find_variable(&self, index: u16, subindex: u8) -> Result<&'o Variable, SDOAbortCode> {

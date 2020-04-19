@@ -23,16 +23,13 @@ fn test_expedited_upload() {
     let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
-    let var1 = match od.get(1).unwrap() {
-        Object::Variable(var) => var,
-        Object::Array(_) => panic!(),
-    };
-    node.sdo_server.data_store.add_data_link(
+    node.data_store.add_data_link(
         &my_od::OD_DUMMY0001,
         RefCellDataLink(RefCell::new(vec![1, 2, 3, 4])),
     );
 
-    node.sdo_server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
+    node.sdo_server
+        .on_request(&mut node.data_store, &[64, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
 }
 
@@ -42,13 +39,15 @@ fn test_segmented_upload() {
     let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
-    node.sdo_server.data_store.add_data_link(
+    node.data_store.add_data_link(
         &my_od::OD_DUMMY0002,
         RefCellDataLink(RefCell::new(vec![1, 2, 3, 4, 5])),
     );
 
-    node.sdo_server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
-    node.sdo_server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
+    node.sdo_server
+        .on_request(&mut node.data_store, &[64, 2, 0, 0, 0, 0, 0, 0]);
+    node.sdo_server
+        .on_request(&mut node.data_store, &[96, 0, 0, 0, 0, 0, 0, 0]);
 
     assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[1], [5, 1, 2, 3, 4, 5, 0, 0]);
@@ -60,8 +59,10 @@ fn test_expedited_download() {
     let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
-    node.sdo_server.on_request(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
-    node.sdo_server.on_request(&[39, 2, 0, 0, 1, 2, 3, 4]); // size specified
+    node.sdo_server
+        .on_request(&mut node.data_store, &[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
+    node.sdo_server
+        .on_request(&mut node.data_store, &[39, 2, 0, 0, 1, 2, 3, 4]); // size specified
 
     assert_eq!(network.sent_messages.borrow()[0], [96, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[1], [96, 2, 0, 0, 0, 0, 0, 0]);
@@ -72,10 +73,13 @@ fn test_abort() {
     let network = MockNetwork::default();
     let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
-    node.sdo_server.on_request(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
-    node.sdo_server.on_request(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
-    node.sdo_server.on_request(&[64, 3, 48, 2, 0, 0, 0, 0]); // upload invalid subindex
-                                                             // TODO TOGGLE Bit not alternated
+    node.sdo_server
+        .on_request(&mut node.data_store, &[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
+    node.sdo_server
+        .on_request(&mut node.data_store, &[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
+    node.sdo_server
+        .on_request(&mut node.data_store, &[64, 3, 48, 2, 0, 0, 0, 0]); // upload invalid subindex
+                                                                        // TODO TOGGLE Bit not alternated
     assert_eq!(
         network.sent_messages.borrow()[0],
         [128, 0, 0, 0, 0x01, 0x00, 0x04, 0x05]
@@ -97,8 +101,8 @@ fn test_bad_data() {
     let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
-    node.sdo_server.on_request(&[0; 7]);
-    node.sdo_server.on_request(&[0; 9]);
-    node.sdo_server.on_request(&[]);
+    node.sdo_server.on_request(&mut node.data_store, &[0; 7]);
+    node.sdo_server.on_request(&mut node.data_store, &[0; 9]);
+    node.sdo_server.on_request(&mut node.data_store, &[]);
     assert!(network.sent_messages.borrow().is_empty());
 }
