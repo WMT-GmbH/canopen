@@ -1,5 +1,6 @@
 pub mod data_store;
 
+pub use data_store::DataLink::{CallbackDataLink, RefCellDataLink};
 pub use data_store::DataStore;
 
 use alloc::collections::BTreeMap;
@@ -53,7 +54,6 @@ pub enum Object {
 pub struct Variable {
     pub index: u16,
     pub subindex: u8,
-    pub name: String,
 }
 
 impl Variable {

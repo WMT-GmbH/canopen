@@ -1,10 +1,8 @@
-mod od;
+mod my_od;
 
-use crate::od::get_od;
 use core::cell::RefCell;
 
-use canopen::objectdictionary::data_store::DataLink;
-use canopen::objectdictionary::{Object, Variable};
+use canopen::objectdictionary::{Object, RefCellDataLink};
 use canopen::LocalNode;
 use canopen::Network;
 
@@ -22,16 +20,17 @@ impl Network for MockNetwork {
 #[test]
 fn test_expedited_upload() {
     let network = MockNetwork::default();
-    let od = get_od();
+    let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
     let var1 = match od.get(1).unwrap() {
         Object::Variable(var) => var,
         Object::Array(_) => panic!(),
     };
-    node.sdo_server
-        .data_store
-        .add_data_link(var1, DataLink::Value(RefCell::new(vec![1, 2, 3, 4])));
+    node.sdo_server.data_store.add_data_link(
+        &my_od::OD_DUMMY0001,
+        RefCellDataLink(RefCell::new(vec![1, 2, 3, 4])),
+    );
 
     node.sdo_server.on_request(&[64, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[0], [67, 1, 0, 0, 1, 2, 3, 4]);
@@ -40,16 +39,13 @@ fn test_expedited_upload() {
 #[test]
 fn test_segmented_upload() {
     let network = MockNetwork::default();
-    let od = get_od();
+    let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
-    let var2 = match od.get(2).unwrap() {
-        Object::Variable(var) => var,
-        Object::Array(_) => panic!(),
-    };
-    node.sdo_server
-        .data_store
-        .add_data_link(var2, DataLink::Value(RefCell::new(vec![1, 2, 3, 4, 5])));
+    node.sdo_server.data_store.add_data_link(
+        &my_od::OD_DUMMY0002,
+        RefCellDataLink(RefCell::new(vec![1, 2, 3, 4, 5])),
+    );
 
     node.sdo_server.on_request(&[64, 2, 0, 0, 0, 0, 0, 0]);
     node.sdo_server.on_request(&[96, 0, 0, 0, 0, 0, 0, 0]);
@@ -61,7 +57,7 @@ fn test_segmented_upload() {
 #[test]
 fn test_expedited_download() {
     let network = MockNetwork::default();
-    let od = get_od();
+    let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
     node.sdo_server.on_request(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
@@ -74,7 +70,7 @@ fn test_expedited_download() {
 #[test]
 fn test_abort() {
     let network = MockNetwork::default();
-    let od = get_od();
+    let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
     node.sdo_server.on_request(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
     node.sdo_server.on_request(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
@@ -98,7 +94,7 @@ fn test_abort() {
 fn test_bad_data() {
     let network = MockNetwork::default();
 
-    let od = get_od();
+    let od = my_od::get_od();
     let mut node = LocalNode::new(2, &network, &od);
 
     node.sdo_server.on_request(&[0; 7]);

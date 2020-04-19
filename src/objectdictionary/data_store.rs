@@ -7,8 +7,8 @@ use crate::sdo::SDOAbortCode;
 use core::cell::RefCell;
 
 pub enum DataLink {
-    Value(RefCell<Vec<u8>>), // TODO will have to be mutable
-    Callbacks,
+    RefCellDataLink(RefCell<Vec<u8>>), // TODO will have to be mutable
+    CallbackDataLink,
 }
 
 #[derive(Default)]
@@ -26,8 +26,8 @@ impl DataStore {
     pub fn get_data(&self, variable: &Variable) -> Result<Vec<u8>, SDOAbortCode> {
         match self.get_data_link(variable) {
             None => Err(ResourceNotAvailable),
-            Some(DataLink::Value(cell)) => Ok(cell.borrow().clone()),
-            Some(DataLink::Callbacks) => Ok(Vec::new()),
+            Some(DataLink::RefCellDataLink(cell)) => Ok(cell.borrow().clone()),
+            Some(DataLink::CallbackDataLink) => Ok(Vec::new()),
         }
         // TODO check length, readable, clone, default
     }
@@ -36,12 +36,12 @@ impl DataStore {
         match self
             .0
             .entry(variable.get_unique_id())
-            .or_insert(DataLink::Value(RefCell::new(vec![])))
+            .or_insert(DataLink::RefCellDataLink(RefCell::new(vec![])))
         {
-            DataLink::Value(cell) => {
+            DataLink::RefCellDataLink(cell) => {
                 *cell.borrow_mut() = data;
             }
-            DataLink::Callbacks => {}
+            DataLink::CallbackDataLink => {}
         };
         Ok(())
     }
