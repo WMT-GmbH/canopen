@@ -8,7 +8,7 @@ pub mod sdo;
 
 pub use network::Network;
 pub use node::LocalNode;
-pub use objectdictionary::ObjectDictionary;
+pub use objectdictionary::{datatypes, ObjectDictionary};
 
 #[cfg(test)]
 #[macro_use]

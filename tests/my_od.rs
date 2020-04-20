@@ -1,9 +1,12 @@
 use canopen::objectdictionary::{Array, ObjectDictionary, Variable};
+use canopen::datatypes::*;
 
 pub const OD_DUMMY0001: Variable =
     Variable::new(0x0001, 0x00, None);
 pub const OD_DUMMY0002: Variable =
     Variable::new(0x0002, 0x00, None);
+pub const OD_DUMMY0003: Variable =
+    Variable::new(0x0003, 0x00, None);
 pub const OD_DEVICE_TYPE: Variable =
     Variable::new(0x1000, 0x00, None);
 pub const OD_ERROR_REGISTER: Variable =
@@ -11,7 +14,7 @@ pub const OD_ERROR_REGISTER: Variable =
 pub const OD_MANUFACTURER_DEVICE_NAME: Variable =
     Variable::new(0x1008, 0x00, None);
 pub const OD_PRODUCER_HEARTBEAT_TIME: Variable =
-    Variable::new(0x1017, 0x00, None);
+    Variable::new(0x1017, 0x00, Some(UNSIGNED16(0)));
 pub const OD_WRITABLE_STRING: Variable =
     Variable::new(0x2000, 0x00, None);
 pub const OD_INTEGER16_VALUE: Variable =
@@ -29,7 +32,7 @@ pub const OD_BOOLEAN_VALUE_2: Variable =
 pub const OD_COMPLEX_DATA_TYPE: Variable =
     Variable::new(0x2020, 0x00, None);
 pub const OD_SENSOR_SAMPLING_RATE_HZ: Variable =
-    Variable::new(0x3002, 0x00, None);
+    Variable::new(0x3002, 0x00, Some(REAL32(5.2)));
 pub const OD_PRE_DEFINED_ERROR_FIELD_NUMBER_OF_ENTRIES: Variable =
     Variable::new(0x1003, 0x00, None);
 pub const OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD: Variable =
@@ -37,19 +40,21 @@ pub const OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD: Variable =
 pub const OD_SENSOR_STATUS_NUMBER_OF_ENTRIES: Variable =
     Variable::new(0x3004, 0x00, None);
 pub const OD_SENSOR_STATUS_SENSOR_STATUS_1: Variable =
-    Variable::new(0x3004, 0x01, None);
+    Variable::new(0x3004, 0x01, Some(UNSIGNED16(3)));
 pub const OD_SENSOR_STATUS_SENSOR_STATUS_2: Variable =
-    Variable::new(0x3004, 0x02, None);
+    Variable::new(0x3004, 0x02, Some(UNSIGNED16(3)));
 pub const OD_SENSOR_STATUS_SENSOR_STATUS_3: Variable =
-    Variable::new(0x3004, 0x03, None);
+    Variable::new(0x3004, 0x03, Some(UNSIGNED16(3)));
 pub const OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES: Variable =
     Variable::new(0x3006, 0x00, None);
 pub const OD_VALVE_1__OPEN_VALVE_1__OPEN: Variable =
     Variable::new(0x3006, 0x01, None);
+
 pub fn get_od() -> ObjectDictionary {
     let mut od = ObjectDictionary::default();
     od.add_variable(OD_DUMMY0001);
     od.add_variable(OD_DUMMY0002);
+    od.add_variable(OD_DUMMY0003);
     od.add_variable(OD_DEVICE_TYPE);
     od.add_variable(OD_ERROR_REGISTER);
     od.add_variable(OD_MANUFACTURER_DEVICE_NAME);

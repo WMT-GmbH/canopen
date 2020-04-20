@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 
 import eds
-from objectdictionary import Variable, Array
+from objectdictionary import Variable, Array, DATA_TYPE_NAMES, NUMBER_TYPES
 
 
 def generate(eds_file, destination_path: Path, node_id):
@@ -13,9 +13,11 @@ def generate(eds_file, destination_path: Path, node_id):
         with open(destination_path, 'w') as f:
             sys.stdout = f
             print('use canopen::objectdictionary::{Array, ObjectDictionary, Variable};')
+            print('use canopen::datatypes::*;')
             print()
             variable_names = [generate_variable(variable) for variable in od.variables]
             array_members = {array: generate_array_variables(array) for array in od.arrays}
+            print()
             print('pub fn get_od() -> ObjectDictionary {')
             print('    let mut od = ObjectDictionary::default();')
             for variable in variable_names:
@@ -35,9 +37,14 @@ def generate_variable(variable: Variable):
         .replace(')', '')\
         .replace('-', '_')\
         .replace('%', '')
+    default_string = 'None'
+    if variable.default is not None:
+        if variable.data_type in NUMBER_TYPES:
+            default_string = f'Some({DATA_TYPE_NAMES[variable.data_type]}({variable.default}))'
+
     string = (
         f'pub const {name}: Variable =\n'
-        f'    Variable::new(0x{variable.index:04x}, 0x{variable.subindex:02x}, None);'
+        f'    Variable::new(0x{variable.index:04x}, 0x{variable.subindex:02x}, {default_string});'
     )
     print(string)
     return name
