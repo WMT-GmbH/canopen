@@ -25,10 +25,16 @@ impl DataStore {
 
     pub fn get_data(&self, variable: &Variable) -> Result<Vec<u8>, SDOAbortCode> {
         match self.get_data_link(variable) {
-            None => Err(ResourceNotAvailable),
             Some(DataLink::RefCellDataLink(cell)) => Ok(cell.borrow().clone()),
             Some(DataLink::CallbackDataLink) => Ok(Vec::new()),
+            None => Err(ResourceNotAvailable),
         }
+        .or({
+            match &variable.default_value {
+                None => Err(ResourceNotAvailable),
+                Some(value) => Ok(value.into()),
+            }
+        })
         // TODO check length, readable, clone, default
     }
 
