@@ -1,7 +1,11 @@
 pub mod data_store;
+pub mod datatypes;
+pub mod variable;
 
 pub use data_store::DataLink::{CallbackDataLink, RefCellDataLink};
 pub use data_store::DataStore;
+pub use datatypes::CANOpenDataType;
+pub use variable::Variable;
 
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -48,17 +52,6 @@ impl Index<u16> for ObjectDictionary{
 pub enum Object {
     Variable(Variable),
     Array(Array),
-}
-
-pub struct Variable {
-    pub index: u16,
-    pub subindex: u8,
-}
-
-impl Variable {
-    pub fn get_unique_id(&self) -> u32 {
-        ((self.index as u32) << 8) + self.subindex as u32
-    }
 }
 
 pub struct Array {

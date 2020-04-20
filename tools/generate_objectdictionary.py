@@ -36,10 +36,8 @@ def generate_variable(variable: Variable):
         .replace('-', '_')\
         .replace('%', '')
     string = (
-        f'pub const {name}: Variable = Variable {{\n'
-        f'    index: 0x{variable.index:04x},\n'
-        f'    subindex: 0x{variable.subindex:02x},\n'
-        f'}};\n'
+        f'pub const {name}: Variable =\n'
+        f'    Variable::new(0x{variable.index:04x}, 0x{variable.subindex:02x}, None);'
     )
     print(string)
     return name
