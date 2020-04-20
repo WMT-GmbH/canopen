@@ -2,7 +2,7 @@ mod my_od;
 
 use core::cell::RefCell;
 
-use canopen::objectdictionary::{Object, RefCellDataLink};
+use canopen::objectdictionary::{RefCellDataLink, Variable};
 use canopen::LocalNode;
 use canopen::Network;
 
@@ -14,6 +14,17 @@ pub struct MockNetwork {
 impl Network for MockNetwork {
     fn send_message(&self, _can_id: u32, data: [u8; 8]) {
         self.sent_messages.borrow_mut().push(data);
+    }
+}
+
+fn get_data_link_value(node: &LocalNode, variable: &Variable) -> Vec<u8> {
+    let link = node
+        .data_store
+        .get_data_link(&variable)
+        .expect("No data link found");
+    match link {
+        RefCellDataLink(link) => link.borrow().to_vec(),
+        _ => panic!("Data Link not a RefCell"),
     }
 }
 
@@ -48,6 +59,11 @@ fn test_segmented_upload() {
 
     assert_eq!(network.sent_messages.borrow()[0], [65, 2, 0, 0, 5, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[1], [5, 1, 2, 3, 4, 5, 0, 0]);
+
+    assert_eq!(
+        get_data_link_value(&node, &my_od::OD_DUMMY0002),
+        vec![1, 2, 3, 4, 5]
+    );
 }
 
 #[test]
@@ -61,6 +77,15 @@ fn test_expedited_download() {
 
     assert_eq!(network.sent_messages.borrow()[0], [96, 1, 0, 0, 0, 0, 0, 0]);
     assert_eq!(network.sent_messages.borrow()[1], [96, 2, 0, 0, 0, 0, 0, 0]);
+
+    assert_eq!(
+        get_data_link_value(&node, &my_od::OD_DUMMY0001),
+        vec![1, 2, 3, 4]
+    );
+    assert_eq!(
+        get_data_link_value(&node, &my_od::OD_DUMMY0002),
+        vec![1, 2, 3]
+    );
 }
 
 #[test]
