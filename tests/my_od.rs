@@ -12,7 +12,7 @@ pub const OD_ERROR_REGISTER: Variable =
 pub const OD_MANUFACTURER_DEVICE_NAME: Variable =
     Variable::new(0x1008, 0x00, Some(VISIBLE_STRING("TEST DEVICE")));
 pub const OD_PRODUCER_HEARTBEAT_TIME: Variable =
-    Variable::new(0x1017, 0x00, Some(UNSIGNED16(0)));
+    Variable::new(0x1017, 0x00, Some(UNSIGNED16(0x0)));
 pub const OD_WRITABLE_STRING: Variable =
     Variable::new(0x2000, 0x00, None);
 pub const OD_INTEGER16_VALUE: Variable =
@@ -38,17 +38,17 @@ pub const OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD: Variable =
 pub const OD_SENSOR_STATUS_NUMBER_OF_ENTRIES: Variable =
     Variable::new(0x3004, 0x00, None);
 pub const OD_SENSOR_STATUS_SENSOR_STATUS_1: Variable =
-    Variable::new(0x3004, 0x01, Some(UNSIGNED16(3)));
+    Variable::new(0x3004, 0x01, Some(UNSIGNED16(0x3)));
 pub const OD_SENSOR_STATUS_SENSOR_STATUS_2: Variable =
-    Variable::new(0x3004, 0x02, Some(UNSIGNED16(3)));
+    Variable::new(0x3004, 0x02, Some(UNSIGNED16(0x3)));
 pub const OD_SENSOR_STATUS_SENSOR_STATUS_3: Variable =
-    Variable::new(0x3004, 0x03, Some(UNSIGNED16(3)));
+    Variable::new(0x3004, 0x03, Some(UNSIGNED16(0x3)));
 pub const OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES: Variable =
     Variable::new(0x3006, 0x00, None);
 pub const OD_VALVE_1__OPEN_VALVE_1__OPEN: Variable =
     Variable::new(0x3006, 0x01, None);
 pub const OD_IDENTITY_OBJECT_HIGHEST_SUB_INDEX_SUPPORTED: Variable =
-    Variable::new(0x1018, 0x00, Some(UNSIGNED8(4)));
+    Variable::new(0x1018, 0x00, Some(UNSIGNED8(0x4)));
 pub const OD_IDENTITY_OBJECT_VENDOR_ID: Variable =
     Variable::new(0x1018, 0x01, None);
 pub const OD_IDENTITY_OBJECT_PRODUCT_CODE: Variable =
@@ -58,133 +58,133 @@ pub const OD_IDENTITY_OBJECT_REVISION_NUMBER: Variable =
 pub const OD_IDENTITY_OBJECT_SERIAL_NUMBER: Variable =
     Variable::new(0x1018, 0x04, None);
 pub const OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1400, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1400, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_1: Variable =
-    Variable::new(0x1400, 0x01, Some(UNSIGNED32(514)));
+    Variable::new(0x1400, 0x01, Some(UNSIGNED32(0x202)));
 pub const OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_1: Variable =
-    Variable::new(0x1400, 0x02, Some(UNSIGNED8(255)));
+    Variable::new(0x1400, 0x02, Some(UNSIGNED8(0xff)));
 pub const OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1401, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1401, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_2: Variable =
-    Variable::new(0x1401, 0x01, Some(UNSIGNED32(770)));
+    Variable::new(0x1401, 0x01, Some(UNSIGNED32(0x302)));
 pub const OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_2: Variable =
-    Variable::new(0x1401, 0x02, Some(UNSIGNED8(255)));
+    Variable::new(0x1401, 0x02, Some(UNSIGNED8(0xff)));
 pub const OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1402, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1402, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_3: Variable =
-    Variable::new(0x1402, 0x01, Some(UNSIGNED32(1026)));
+    Variable::new(0x1402, 0x01, Some(UNSIGNED32(0x402)));
 pub const OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_3: Variable =
-    Variable::new(0x1402, 0x02, Some(UNSIGNED8(255)));
+    Variable::new(0x1402, 0x02, Some(UNSIGNED8(0xff)));
 pub const OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1403, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1403, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_4: Variable =
-    Variable::new(0x1403, 0x01, Some(UNSIGNED32(1282)));
+    Variable::new(0x1403, 0x01, Some(UNSIGNED32(0x502)));
 pub const OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_4: Variable =
-    Variable::new(0x1403, 0x02, Some(UNSIGNED8(255)));
+    Variable::new(0x1403, 0x02, Some(UNSIGNED8(0xff)));
 pub const OD_RECEIVE_PDO_0_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_1: Variable =
-    Variable::new(0x1600, 0x00, Some(UNSIGNED8(1)));
+    Variable::new(0x1600, 0x00, Some(UNSIGNED8(0x1)));
 pub const OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1600, 0x01, Some(UNSIGNED32(1614807056)));
+    Variable::new(0x1600, 0x01, Some(UNSIGNED32(0x60400010)));
 pub const OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1600, 0x02, Some(UNSIGNED32(0)));
+    Variable::new(0x1600, 0x02, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1600, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1600, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1600, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1600, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_1_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_2: Variable =
-    Variable::new(0x1601, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1601, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1601, 0x01, Some(UNSIGNED32(1614807056)));
+    Variable::new(0x1601, 0x01, Some(UNSIGNED32(0x60400010)));
 pub const OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1601, 0x02, Some(UNSIGNED32(1616904200)));
+    Variable::new(0x1601, 0x02, Some(UNSIGNED32(0x60600008)));
 pub const OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1601, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1601, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1601, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1601, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_2_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_3: Variable =
-    Variable::new(0x1602, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1602, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1602, 0x01, Some(UNSIGNED32(1614807056)));
+    Variable::new(0x1602, 0x01, Some(UNSIGNED32(0x60400010)));
 pub const OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1602, 0x02, Some(UNSIGNED32(1618608160)));
+    Variable::new(0x1602, 0x02, Some(UNSIGNED32(0x607a0020)));
 pub const OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1602, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1602, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1602, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1602, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_3_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_4: Variable =
-    Variable::new(0x1603, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1603, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1603, 0x01, Some(UNSIGNED32(1614807056)));
+    Variable::new(0x1603, 0x01, Some(UNSIGNED32(0x60400010)));
 pub const OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1603, 0x02, Some(UNSIGNED32(1627324448)));
+    Variable::new(0x1603, 0x02, Some(UNSIGNED32(0x60ff0020)));
 pub const OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1603, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1603, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1603, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1603, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1800, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1800, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_1: Variable =
-    Variable::new(0x1800, 0x01, Some(UNSIGNED32(386)));
+    Variable::new(0x1800, 0x01, Some(UNSIGNED32(0x182)));
 pub const OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_1: Variable =
-    Variable::new(0x1800, 0x02, Some(UNSIGNED8(255)));
+    Variable::new(0x1800, 0x02, Some(UNSIGNED8(0xff)));
 pub const OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1801, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1801, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_2: Variable =
-    Variable::new(0x1801, 0x01, Some(UNSIGNED32(642)));
+    Variable::new(0x1801, 0x01, Some(UNSIGNED32(0x282)));
 pub const OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_2: Variable =
-    Variable::new(0x1801, 0x02, Some(UNSIGNED8(255)));
+    Variable::new(0x1801, 0x02, Some(UNSIGNED8(0xff)));
 pub const OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1802, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1802, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_3: Variable =
-    Variable::new(0x1802, 0x01, Some(UNSIGNED32(898)));
+    Variable::new(0x1802, 0x01, Some(UNSIGNED32(0x382)));
 pub const OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_3: Variable =
-    Variable::new(0x1802, 0x02, Some(UNSIGNED8(0)));
+    Variable::new(0x1802, 0x02, Some(UNSIGNED8(0x0)));
 pub const OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x1803, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1803, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_4: Variable =
-    Variable::new(0x1803, 0x01, Some(UNSIGNED32(1154)));
+    Variable::new(0x1803, 0x01, Some(UNSIGNED32(0x482)));
 pub const OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_4: Variable =
-    Variable::new(0x1803, 0x02, Some(UNSIGNED8(0)));
+    Variable::new(0x1803, 0x02, Some(UNSIGNED8(0x0)));
 pub const OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_1: Variable =
-    Variable::new(0x1a00, 0x00, Some(UNSIGNED8(1)));
+    Variable::new(0x1a00, 0x00, Some(UNSIGNED8(0x1)));
 pub const OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1a00, 0x01, Some(UNSIGNED32(1614872592)));
+    Variable::new(0x1a00, 0x01, Some(UNSIGNED32(0x60410010)));
 pub const OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1a00, 0x02, Some(UNSIGNED32(0)));
+    Variable::new(0x1a00, 0x02, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1a00, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1a00, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1a00, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1a00, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_2: Variable =
-    Variable::new(0x1a01, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1a01, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1a01, 0x01, Some(UNSIGNED32(1614872592)));
+    Variable::new(0x1a01, 0x01, Some(UNSIGNED32(0x60410010)));
 pub const OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1a01, 0x02, Some(UNSIGNED32(1616969736)));
+    Variable::new(0x1a01, 0x02, Some(UNSIGNED32(0x60610008)));
 pub const OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1a01, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1a01, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1a01, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1a01, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_3: Variable =
-    Variable::new(0x1a02, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1a02, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1a02, 0x01, Some(UNSIGNED32(1614872592)));
+    Variable::new(0x1a02, 0x01, Some(UNSIGNED32(0x60410010)));
 pub const OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1a02, 0x02, Some(UNSIGNED32(1617166368)));
+    Variable::new(0x1a02, 0x02, Some(UNSIGNED32(0x60640020)));
 pub const OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1a02, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1a02, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1a02, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1a02, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_4: Variable =
-    Variable::new(0x1a03, 0x00, Some(UNSIGNED8(2)));
+    Variable::new(0x1a03, 0x00, Some(UNSIGNED8(0x2)));
 pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_1: Variable =
-    Variable::new(0x1a03, 0x01, Some(UNSIGNED32(1614872592)));
+    Variable::new(0x1a03, 0x01, Some(UNSIGNED32(0x60410010)));
 pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_2: Variable =
-    Variable::new(0x1a03, 0x02, Some(UNSIGNED32(1617690656)));
+    Variable::new(0x1a03, 0x02, Some(UNSIGNED32(0x606c0020)));
 pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_3: Variable =
-    Variable::new(0x1a03, 0x03, Some(UNSIGNED32(0)));
+    Variable::new(0x1a03, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_4: Variable =
-    Variable::new(0x1a03, 0x04, Some(UNSIGNED32(0)));
+    Variable::new(0x1a03, 0x04, Some(UNSIGNED32(0x0)));
 pub const OD_READRAWVALUE_TEMPERATURE: Variable =
     Variable::new(0x3010, 0x00, Some(REAL32(0.0)));
 
