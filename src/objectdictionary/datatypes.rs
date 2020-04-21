@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 
 pub use CANOpenDataType::*;
 
+#[allow(non_camel_case_types)]
 pub enum CANOpenDataType {
     BOOLEAN(bool),
     INTEGER8(i8),
@@ -17,6 +18,8 @@ pub enum CANOpenDataType {
     VISIBLE_STRING(&'static str),
     OCTET_STRING(&'static str),
     UNICODE_STRING(&'static str),
+    TIME_OF_DAY,
+    TIME_DIFFERENCE,
     DOMAIN, // TODO Strings and Domain
 }
 
@@ -34,7 +37,7 @@ impl From<&CANOpenDataType> for Vec<u8> {
             UNSIGNED64(data) => data.to_le_bytes().to_vec(),
             REAL32(data) => data.to_le_bytes().to_vec(),
             REAL64(data) => data.to_le_bytes().to_vec(),
-            _ => !unimplemented!(),
+            _ => unimplemented!(),
         }
     }
 }

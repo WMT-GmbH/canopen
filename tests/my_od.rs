@@ -5,14 +5,12 @@ pub const OD_DUMMY0001: Variable =
     Variable::new(0x0001, 0x00, None);
 pub const OD_DUMMY0002: Variable =
     Variable::new(0x0002, 0x00, None);
-pub const OD_DUMMY0003: Variable =
-    Variable::new(0x0003, 0x00, None);
 pub const OD_DEVICE_TYPE: Variable =
     Variable::new(0x1000, 0x00, None);
 pub const OD_ERROR_REGISTER: Variable =
     Variable::new(0x1001, 0x00, None);
 pub const OD_MANUFACTURER_DEVICE_NAME: Variable =
-    Variable::new(0x1008, 0x00, None);
+    Variable::new(0x1008, 0x00, Some(VISIBLE_STRING("TEST DEVICE")));
 pub const OD_PRODUCER_HEARTBEAT_TIME: Variable =
     Variable::new(0x1017, 0x00, Some(UNSIGNED16(0)));
 pub const OD_WRITABLE_STRING: Variable =
@@ -54,7 +52,6 @@ pub fn get_od() -> ObjectDictionary {
     let mut od = ObjectDictionary::default();
     od.add_variable(OD_DUMMY0001);
     od.add_variable(OD_DUMMY0002);
-    od.add_variable(OD_DUMMY0003);
     od.add_variable(OD_DEVICE_TYPE);
     od.add_variable(OD_ERROR_REGISTER);
     od.add_variable(OD_MANUFACTURER_DEVICE_NAME);

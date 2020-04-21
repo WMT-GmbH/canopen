@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 
 import eds
-from objectdictionary import Variable, Array, DATA_TYPE_NAMES, NUMBER_TYPES
+from objectdictionary import Variable, Array, DATA_TYPE_NAMES, NUMBER_TYPES, DOMAIN
 
 
 def generate(eds_file, destination_path: Path, node_id):
@@ -41,6 +41,8 @@ def generate_variable(variable: Variable):
     if variable.default is not None:
         if variable.data_type in NUMBER_TYPES:
             default_string = f'Some({DATA_TYPE_NAMES[variable.data_type]}({variable.default}))'
+        elif variable.data_type != DOMAIN:
+            default_string = f'Some({DATA_TYPE_NAMES[variable.data_type]}("{variable.default}"))'
 
     string = (
         f'pub const {name}: Variable =\n'
