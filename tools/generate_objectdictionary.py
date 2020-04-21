@@ -12,18 +12,18 @@ def generate(eds_file, destination_path: Path, node_id):
     try:
         with open(destination_path, 'w') as f:
             sys.stdout = f
-            print('use canopen::objectdictionary::{Array, ObjectDictionary, Variable};')
+            print('use canopen::objectdictionary::{ObjectDictionary, Variable, Array, Record};')
             print('use canopen::datatypes::*;')
             print()
             variable_names = [generate_variable(variable) for variable in od.variables]
-            array_members = {array: generate_array_variables(array) for array in od.arrays}
+            members = {complex_obj: generate_members(complex_obj) for complex_obj in od.arrays + od.records}
             print()
             print('pub fn get_od() -> ObjectDictionary {')
             print('    let mut od = ObjectDictionary::default();')
             for variable in variable_names:
                 add_variable(variable)
-            for array, members in array_members.items():
-                add_array(array, members)
+            for complex_obj, members in members.items():
+                add_complex_obj(complex_obj, members)
             print('    od')
             print('}')
     finally:
@@ -52,7 +52,7 @@ def generate_variable(variable: Variable):
     return name
 
 
-def generate_array_variables(array: Array):
+def generate_members(array: Array):
     members = []
     for variable in array.members:
         variable.name = array.name + '_' + variable.name
@@ -65,8 +65,9 @@ def add_variable(variable_name: str, indent=4):
     print(indent + f'od.add_variable({variable_name});')
 
 
-def add_array(array: Array, member_names: list, indent=4):
+def add_complex_obj(complex_obj, member_names: list, indent=4):
     indent = ' ' * indent
+    obj_type, func = ('Array', 'add_array') if isinstance(complex_obj, Array) else ('Record', 'add_record')
 
     if member_names:
         member_string = '\n'
@@ -77,8 +78,8 @@ def add_array(array: Array, member_names: list, indent=4):
         member_string = ''
 
     string = (
-        f'od.add_array(Array {{\n'
-        f'    index: 0x{array.index:04x},\n'
+        f'od.{func}({obj_type} {{\n'
+        f'    index: 0x{complex_obj.index:04x},\n'
         f'    members: vec![{member_string}]\n'
         f'}});'
     )

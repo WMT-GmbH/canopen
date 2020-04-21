@@ -24,6 +24,7 @@ impl ObjectDictionary {
         let index = match &object {
             Object::Variable(variable) => variable.index,
             Object::Array(array) => array.index,
+            Object::Record(record) => record.index,
         };
         self.indices.insert(index, object);
     }
@@ -35,6 +36,10 @@ impl ObjectDictionary {
 
     pub fn add_array(&mut self, array: Array) {
         self.indices.insert(array.index, Object::Array(array));
+    }
+
+    pub fn add_record(&mut self, record: Record) {
+        self.indices.insert(record.index, Object::Record(record));
     }
 }
 
@@ -52,6 +57,7 @@ impl Index<u16> for ObjectDictionary{
 pub enum Object {
     Variable(Variable),
     Array(Array),
+    Record(Record),
 }
 
 pub struct Array {
@@ -60,6 +66,17 @@ pub struct Array {
 }
 
 impl Array {
+    pub fn get(&self, subindex: u8) -> Option<&Variable> {
+        self.members.get(subindex as usize)
+    }
+}
+
+pub struct Record {
+    pub index: u16,
+    pub members: Vec<Variable>,
+}
+
+impl Record {
     pub fn get(&self, subindex: u8) -> Option<&Variable> {
         self.members.get(subindex as usize)
     }

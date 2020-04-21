@@ -117,7 +117,12 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         Ok(Some(response))
     }
 
-    fn init_download(&mut self, command: u8, request: [u8; 7], data_store: &mut DataStore) -> RequestResult {
+    fn init_download(
+        &mut self,
+        command: u8,
+        request: [u8; 7],
+        data_store: &mut DataStore,
+    ) -> RequestResult {
         // ---------- TODO optimize TODO check if writable
         let index = u16::from_le_bytes(request[0..2].try_into().unwrap());
         let subindex = request[2];
@@ -143,7 +148,12 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         Ok(Some(response))
     }
 
-    fn segmented_download(&mut self, command: u8, request: [u8; 7], data_store: &mut DataStore) -> RequestResult {
+    fn segmented_download(
+        &mut self,
+        command: u8,
+        request: [u8; 7],
+        data_store: &mut DataStore,
+    ) -> RequestResult {
         if command & TOGGLE_BIT != self.state.toggle_bit {
             return Err(SDOAbortCode::ToggleBitNotAlternated);
         }
@@ -188,7 +198,12 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         self.network.send_message(self.tx_cobid, data);
     }
 
-    pub fn get_data(&self, index: u16, subindex: u8, data_store: &DataStore) -> Result<Vec<u8>, SDOAbortCode> {
+    pub fn get_data(
+        &self,
+        index: u16,
+        subindex: u8,
+        data_store: &DataStore,
+    ) -> Result<Vec<u8>, SDOAbortCode> {
         let variable = self.find_variable(index, subindex)?;
         data_store.get_data(variable)
     }
@@ -198,7 +213,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         index: u16,
         subindex: u8,
         data: Vec<u8>,
-        data_store: &mut DataStore
+        data_store: &mut DataStore,
     ) -> Result<(), SDOAbortCode> {
         // TODO check if writable
         let variable = self.find_variable(index, subindex)?;
@@ -211,6 +226,9 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         match object {
             Object::Variable(variable) => Ok(variable),
             Object::Array(array) => Ok(array
+                .get(subindex)
+                .ok_or(SDOAbortCode::SubindexDoesNotExist)?),
+            Object::Record(record) => Ok(record
                 .get(subindex)
                 .ok_or(SDOAbortCode::SubindexDoesNotExist)?),
         }

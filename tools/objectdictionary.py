@@ -46,6 +46,10 @@ class ObjectDictionary:
     def arrays(self):
         return [var for var in [self.indices[index] for index in sorted(self.indices)] if isinstance(var, Array)]
 
+    @property
+    def records(self):
+        return [var for var in [self.indices[index] for index in sorted(self.indices)] if isinstance(var, Record)]
+
     def add_object(self, obj):
         self.indices[obj.index] = obj
 
@@ -60,6 +64,10 @@ class Record:
         #: Name of record
         self.name = name
         self.subindices = {}
+
+    @property
+    def members(self):
+        return [self.subindices[index] for index in sorted(self.subindices)]
 
     def add_member(self, variable):
         variable.parent = self

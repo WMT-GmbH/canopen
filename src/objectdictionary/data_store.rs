@@ -1,10 +1,9 @@
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
 use crate::objectdictionary::Variable;
-use crate::sdo::errors::SDOAbortCode::ResourceNotAvailable;
 use crate::sdo::SDOAbortCode;
-use core::cell::RefCell;
 
 pub enum DataLink {
     RefCellDataLink(RefCell<Vec<u8>>), // TODO will have to be mutable
@@ -27,11 +26,11 @@ impl DataStore {
         match self.get_data_link(variable) {
             Some(DataLink::RefCellDataLink(cell)) => Ok(cell.borrow().clone()),
             Some(DataLink::CallbackDataLink) => Ok(Vec::new()),
-            None => Err(ResourceNotAvailable),
+            None => Err(SDOAbortCode::ResourceNotAvailable),
         }
         .or({
             match &variable.default_value {
-                None => Err(ResourceNotAvailable),
+                None => Err(SDOAbortCode::ResourceNotAvailable),
                 Some(value) => Ok(value.into()),
             }
         })
@@ -42,7 +41,7 @@ impl DataStore {
         match self
             .0
             .entry(variable.unique_id)
-            .or_insert(DataLink::RefCellDataLink(RefCell::new(vec![])))
+            .or_insert_with(|| DataLink::RefCellDataLink(RefCell::new(vec![])))
         {
             DataLink::RefCellDataLink(cell) => {
                 *cell.borrow_mut() = data;
