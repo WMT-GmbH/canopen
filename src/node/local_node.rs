@@ -7,12 +7,8 @@ pub struct LocalNode<'n, 'o> {
     pub data_store: DataStore,
 }
 
-impl<'n, 'o, 'd> LocalNode<'n, 'o> {
-    pub fn new(
-        node_id: u8,
-        network: &'n dyn Network,
-        od: &'o ObjectDictionary,
-    ) -> LocalNode<'n, 'o> {
+impl<'n, 'o> LocalNode<'n, 'o> {
+    pub fn new(node_id: u8, network: &'n dyn Network, od: &'o ObjectDictionary) -> Self {
         let data_store = DataStore::default();
 
         LocalNode {

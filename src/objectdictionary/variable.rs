@@ -8,7 +8,7 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub const fn new(index: u16, subindex: u8, default_value: Option<CANOpenDataType>) -> Variable {
+    pub const fn new(index: u16, subindex: u8, default_value: Option<CANOpenDataType>) -> Self {
         Variable {
             index,
             subindex,

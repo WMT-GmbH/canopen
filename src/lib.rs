@@ -1,6 +1,9 @@
+#![warn(rust_2018_idioms)]
 #![no_std]
+
 #[macro_use]
 extern crate alloc;
+
 pub mod network;
 pub mod node;
 pub mod objectdictionary;

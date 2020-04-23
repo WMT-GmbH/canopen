@@ -30,7 +30,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         tx_cobid: u32,
         network: &'n dyn Network,
         od: &'o ObjectDictionary,
-    ) -> SdoServer<'n, 'o> {
+    ) -> Self {
         SdoServer {
             _rx_cobid: rx_cobid,
             tx_cobid,

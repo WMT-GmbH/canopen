@@ -76,7 +76,7 @@ impl From<u32> for SDOAbortCode {
 }
 
 impl fmt::Display for SDOAbortCode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = match self {
             SDOAbortCode::ToggleBitNotAlternated => "Toggle bit not alternated",
             SDOAbortCode::SDOProtocolTimedOut => "SDO protocol timed out",
