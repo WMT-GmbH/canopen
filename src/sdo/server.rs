@@ -16,20 +16,20 @@ struct State {
     buffer: Vec<u8>,
 }
 
-pub struct SdoServer<'n, 'o> {
+pub struct SdoServer<'a> {
     _rx_cobid: u32,
     tx_cobid: u32,
-    network: &'n dyn Network,
-    od: &'o ObjectDictionary,
+    network: &'a dyn Network,
+    od: &'a ObjectDictionary,
     state: State,
 }
 
-impl<'n, 'o> SdoServer<'n, 'o> {
+impl<'a> SdoServer<'a> {
     pub fn new(
         rx_cobid: u32,
         tx_cobid: u32,
-        network: &'n dyn Network,
-        od: &'o ObjectDictionary,
+        network: &'a dyn Network,
+        od: &'a ObjectDictionary,
     ) -> Self {
         SdoServer {
             _rx_cobid: rx_cobid,
@@ -220,7 +220,7 @@ impl<'n, 'o> SdoServer<'n, 'o> {
         data_store.set_data(variable, data)
     }
 
-    fn find_variable(&self, index: u16, subindex: u8) -> Result<&'o Variable, SDOAbortCode> {
+    fn find_variable(&self, index: u16, subindex: u8) -> Result<&'a Variable, SDOAbortCode> {
         let object = self.od.get(index).ok_or(SDOAbortCode::ObjectDoesNotExist)?;
 
         match object {

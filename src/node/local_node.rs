@@ -2,13 +2,13 @@ use crate::network::Network;
 use crate::objectdictionary::{DataStore, ObjectDictionary};
 use crate::sdo::SdoServer;
 
-pub struct LocalNode<'n, 'o> {
-    pub sdo_server: SdoServer<'n, 'o>,
+pub struct LocalNode<'a> {
+    pub sdo_server: SdoServer<'a>,
     pub data_store: DataStore,
 }
 
-impl<'n, 'o> LocalNode<'n, 'o> {
-    pub fn new(node_id: u8, network: &'n dyn Network, od: &'o ObjectDictionary) -> Self {
+impl<'a> LocalNode<'a> {
+    pub fn new(node_id: u8, network: &'a dyn Network, od: &'a ObjectDictionary) -> Self {
         let data_store = DataStore::default();
 
         LocalNode {
