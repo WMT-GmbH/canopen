@@ -12,6 +12,7 @@ use alloc::vec::Vec;
 
 #[derive(Default)]
 pub struct ObjectDictionary {
+    // TODO use fixed sized array and slice binary_search_by instead of BTreeMap
     indices: BTreeMap<u16, Object>,
 }
 
