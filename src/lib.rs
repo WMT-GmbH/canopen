@@ -1,6 +1,7 @@
 #![warn(rust_2018_idioms)]
 #![no_std]
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate alloc;
 

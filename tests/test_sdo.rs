@@ -17,10 +17,10 @@ impl Network for MockNetwork {
     }
 }
 
-fn get_data_link_value(node: &LocalNode, variable: &Variable) -> Vec<u8> {
+fn get_data_link_value(node: &LocalNode<MockNetwork>, variable: &Variable) -> Vec<u8> {
     let link = node
         .data_store
-        .get_data_link(&variable)
+        .get_data_link(variable)
         .expect("No data link found");
     match link {
         RefCellDataLink(link) => link.borrow().to_vec(),
@@ -85,6 +85,29 @@ fn test_expedited_download() {
     assert_eq!(
         get_data_link_value(&node, &my_od::OD_DUMMY0002),
         vec![1, 2, 3]
+    );
+}
+
+#[test]
+fn test_segmented_download() {
+    let network = MockNetwork::default();
+    let od = my_od::get_od();
+    let mut node = LocalNode::new(2, &network, &od);
+
+    node.on_message(&[33, 0, 32, 0, 13, 0, 0, 0]);
+    node.on_message(&[0, 65, 32, 108, 111, 110, 103, 32]);
+    node.on_message(&[19, 115, 116, 114, 105, 110, 103, 0]);
+
+    assert_eq!(
+        network.sent_messages.borrow()[0],
+        [96, 0, 32, 0, 0, 0, 0, 0]
+    );
+    assert_eq!(network.sent_messages.borrow()[1], [32, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(network.sent_messages.borrow()[2], [48, 0, 0, 0, 0, 0, 0, 0]);
+
+    assert_eq!(
+        get_data_link_value(&node, &my_od::OD_WRITABLE_STRING),
+        b"A long string"
     );
 }
 

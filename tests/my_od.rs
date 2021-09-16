@@ -1,4 +1,4 @@
-use canopen::objectdictionary::{ObjectDictionary, Variable, Array, Record};
+use canopen::objectdictionary::{Object, ObjectDictionary, Variable, Array, Record};
 use canopen::datatypes::*;
 
 pub const OD_DUMMY0001: Variable =
@@ -9,44 +9,14 @@ pub const OD_DEVICE_TYPE: Variable =
     Variable::new(0x1000, 0x00, None);
 pub const OD_ERROR_REGISTER: Variable =
     Variable::new(0x1001, 0x00, None);
-pub const OD_MANUFACTURER_DEVICE_NAME: Variable =
-    Variable::new(0x1008, 0x00, Some(VISIBLE_STRING("TEST DEVICE")));
-pub const OD_PRODUCER_HEARTBEAT_TIME: Variable =
-    Variable::new(0x1017, 0x00, Some(UNSIGNED16(0x0)));
-pub const OD_WRITABLE_STRING: Variable =
-    Variable::new(0x2000, 0x00, None);
-pub const OD_INTEGER16_VALUE: Variable =
-    Variable::new(0x2001, 0x00, None);
-pub const OD_UNSIGNED8_VALUE: Variable =
-    Variable::new(0x2002, 0x00, None);
-pub const OD_INTEGER8_VALUE: Variable =
-    Variable::new(0x2003, 0x00, None);
-pub const OD_INTEGER32_VALUE: Variable =
-    Variable::new(0x2004, 0x00, None);
-pub const OD_BOOLEAN_VALUE: Variable =
-    Variable::new(0x2005, 0x00, None);
-pub const OD_BOOLEAN_VALUE_2: Variable =
-    Variable::new(0x2006, 0x00, None);
-pub const OD_COMPLEX_DATA_TYPE: Variable =
-    Variable::new(0x2020, 0x00, None);
-pub const OD_SENSOR_SAMPLING_RATE_HZ: Variable =
-    Variable::new(0x3002, 0x00, Some(REAL32(5.2)));
 pub const OD_PRE_DEFINED_ERROR_FIELD_NUMBER_OF_ENTRIES: Variable =
     Variable::new(0x1003, 0x00, None);
 pub const OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD: Variable =
     Variable::new(0x1003, 0x01, None);
-pub const OD_SENSOR_STATUS_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x3004, 0x00, None);
-pub const OD_SENSOR_STATUS_SENSOR_STATUS_1: Variable =
-    Variable::new(0x3004, 0x01, Some(UNSIGNED16(0x3)));
-pub const OD_SENSOR_STATUS_SENSOR_STATUS_2: Variable =
-    Variable::new(0x3004, 0x02, Some(UNSIGNED16(0x3)));
-pub const OD_SENSOR_STATUS_SENSOR_STATUS_3: Variable =
-    Variable::new(0x3004, 0x03, Some(UNSIGNED16(0x3)));
-pub const OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES: Variable =
-    Variable::new(0x3006, 0x00, None);
-pub const OD_VALVE_1__OPEN_VALVE_1__OPEN: Variable =
-    Variable::new(0x3006, 0x01, None);
+pub const OD_MANUFACTURER_DEVICE_NAME: Variable =
+    Variable::new(0x1008, 0x00, Some(VISIBLE_STRING("TEST DEVICE")));
+pub const OD_PRODUCER_HEARTBEAT_TIME: Variable =
+    Variable::new(0x1017, 0x00, Some(UNSIGNED16(0x0)));
 pub const OD_IDENTITY_OBJECT_HIGHEST_SUB_INDEX_SUPPORTED: Variable =
     Variable::new(0x1018, 0x00, Some(UNSIGNED8(0x4)));
 pub const OD_IDENTITY_OBJECT_VENDOR_ID: Variable =
@@ -185,212 +155,241 @@ pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_3: Vari
     Variable::new(0x1a03, 0x03, Some(UNSIGNED32(0x0)));
 pub const OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_4: Variable =
     Variable::new(0x1a03, 0x04, Some(UNSIGNED32(0x0)));
+pub const OD_WRITABLE_STRING: Variable =
+    Variable::new(0x2000, 0x00, None);
+pub const OD_INTEGER16_VALUE: Variable =
+    Variable::new(0x2001, 0x00, None);
+pub const OD_UNSIGNED8_VALUE: Variable =
+    Variable::new(0x2002, 0x00, None);
+pub const OD_INTEGER8_VALUE: Variable =
+    Variable::new(0x2003, 0x00, None);
+pub const OD_INTEGER32_VALUE: Variable =
+    Variable::new(0x2004, 0x00, None);
+pub const OD_BOOLEAN_VALUE: Variable =
+    Variable::new(0x2005, 0x00, None);
+pub const OD_BOOLEAN_VALUE_2: Variable =
+    Variable::new(0x2006, 0x00, None);
+pub const OD_SENSOR_SAMPLING_RATE_HZ: Variable =
+    Variable::new(0x3002, 0x00, Some(REAL32(5.2)));
+pub const OD_SENSOR_STATUS_NUMBER_OF_ENTRIES: Variable =
+    Variable::new(0x3004, 0x00, None);
+pub const OD_SENSOR_STATUS_SENSOR_STATUS_1: Variable =
+    Variable::new(0x3004, 0x01, Some(UNSIGNED16(0x3)));
+pub const OD_SENSOR_STATUS_SENSOR_STATUS_2: Variable =
+    Variable::new(0x3004, 0x02, Some(UNSIGNED16(0x3)));
+pub const OD_SENSOR_STATUS_SENSOR_STATUS_3: Variable =
+    Variable::new(0x3004, 0x03, Some(UNSIGNED16(0x3)));
+pub const OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES: Variable =
+    Variable::new(0x3006, 0x00, None);
+pub const OD_VALVE_1__OPEN_VALVE_1__OPEN: Variable =
+    Variable::new(0x3006, 0x01, None);
 pub const OD_READRAWVALUE_TEMPERATURE: Variable =
     Variable::new(0x3010, 0x00, Some(REAL32(0.0)));
 
 pub fn get_od() -> ObjectDictionary {
-    let mut od = ObjectDictionary::default();
-    od.add_variable(OD_DUMMY0001);
-    od.add_variable(OD_DUMMY0002);
-    od.add_variable(OD_DEVICE_TYPE);
-    od.add_variable(OD_ERROR_REGISTER);
-    od.add_variable(OD_MANUFACTURER_DEVICE_NAME);
-    od.add_variable(OD_PRODUCER_HEARTBEAT_TIME);
-    od.add_variable(OD_WRITABLE_STRING);
-    od.add_variable(OD_INTEGER16_VALUE);
-    od.add_variable(OD_UNSIGNED8_VALUE);
-    od.add_variable(OD_INTEGER8_VALUE);
-    od.add_variable(OD_INTEGER32_VALUE);
-    od.add_variable(OD_BOOLEAN_VALUE);
-    od.add_variable(OD_BOOLEAN_VALUE_2);
-    od.add_variable(OD_COMPLEX_DATA_TYPE);
-    od.add_variable(OD_SENSOR_SAMPLING_RATE_HZ);
-    od.add_array(Array {
-        index: 0x1003,
-        members: vec![
-            OD_PRE_DEFINED_ERROR_FIELD_NUMBER_OF_ENTRIES,
-            OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD,
+    ObjectDictionary {
+        objects: [
+            Object::Variable(OD_DUMMY0001),
+            Object::Variable(OD_DUMMY0002),
+            Object::Variable(OD_DEVICE_TYPE),
+            Object::Variable(OD_ERROR_REGISTER),
+            Object::Array(Array {
+                index: 0x1003,
+                members: vec![
+                        OD_PRE_DEFINED_ERROR_FIELD_NUMBER_OF_ENTRIES,
+                        OD_PRE_DEFINED_ERROR_FIELD_PRE_DEFINED_ERROR_FIELD,
+                        ]
+            }),
+            Object::Variable(OD_MANUFACTURER_DEVICE_NAME),
+            Object::Variable(OD_PRODUCER_HEARTBEAT_TIME),
+            Object::Record(Record {
+                index: 0x1018,
+                members: vec![
+                        OD_IDENTITY_OBJECT_HIGHEST_SUB_INDEX_SUPPORTED,
+                        OD_IDENTITY_OBJECT_VENDOR_ID,
+                        OD_IDENTITY_OBJECT_PRODUCT_CODE,
+                        OD_IDENTITY_OBJECT_REVISION_NUMBER,
+                        OD_IDENTITY_OBJECT_SERIAL_NUMBER,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1400,
+                members: vec![
+                        OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
+                        OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_1,
+                        OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_1,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1401,
+                members: vec![
+                        OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
+                        OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_2,
+                        OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_2,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1402,
+                members: vec![
+                        OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
+                        OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_3,
+                        OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_3,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1403,
+                members: vec![
+                        OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
+                        OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_4,
+                        OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1600,
+                members: vec![
+                        OD_RECEIVE_PDO_0_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_1,
+                        OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_1,
+                        OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_2,
+                        OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_3,
+                        OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1601,
+                members: vec![
+                        OD_RECEIVE_PDO_1_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_2,
+                        OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_1,
+                        OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_2,
+                        OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_3,
+                        OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1602,
+                members: vec![
+                        OD_RECEIVE_PDO_2_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_3,
+                        OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_1,
+                        OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_2,
+                        OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_3,
+                        OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1603,
+                members: vec![
+                        OD_RECEIVE_PDO_3_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_4,
+                        OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_1,
+                        OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_2,
+                        OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_3,
+                        OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1800,
+                members: vec![
+                        OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
+                        OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_1,
+                        OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_1,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1801,
+                members: vec![
+                        OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
+                        OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_2,
+                        OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_2,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1802,
+                members: vec![
+                        OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
+                        OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_3,
+                        OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_3,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1803,
+                members: vec![
+                        OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
+                        OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_4,
+                        OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1a00,
+                members: vec![
+                        OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_1,
+                        OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_1,
+                        OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_2,
+                        OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_3,
+                        OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1a01,
+                members: vec![
+                        OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_2,
+                        OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_1,
+                        OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_2,
+                        OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_3,
+                        OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1a02,
+                members: vec![
+                        OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_3,
+                        OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_1,
+                        OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_2,
+                        OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_3,
+                        OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x1a03,
+                members: vec![
+                        OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_4,
+                        OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_1,
+                        OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_2,
+                        OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_3,
+                        OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_4,
+                        ]
+            }),
+            Object::Variable(OD_WRITABLE_STRING),
+            Object::Variable(OD_INTEGER16_VALUE),
+            Object::Variable(OD_UNSIGNED8_VALUE),
+            Object::Variable(OD_INTEGER8_VALUE),
+            Object::Variable(OD_INTEGER32_VALUE),
+            Object::Variable(OD_BOOLEAN_VALUE),
+            Object::Variable(OD_BOOLEAN_VALUE_2),
+            Object::Variable(OD_SENSOR_SAMPLING_RATE_HZ),
+            Object::Array(Array {
+                index: 0x3003,
+                members: vec![]
+            }),
+            Object::Array(Array {
+                index: 0x3004,
+                members: vec![
+                        OD_SENSOR_STATUS_NUMBER_OF_ENTRIES,
+                        OD_SENSOR_STATUS_SENSOR_STATUS_1,
+                        OD_SENSOR_STATUS_SENSOR_STATUS_2,
+                        OD_SENSOR_STATUS_SENSOR_STATUS_3,
+                        ]
+            }),
+            Object::Array(Array {
+                index: 0x3006,
+                members: vec![
+                        OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES,
+                        OD_VALVE_1__OPEN_VALVE_1__OPEN,
+                        ]
+            }),
+            Object::Record(Record {
+                index: 0x3010,
+                members: vec![
+                        OD_READRAWVALUE_TEMPERATURE,
+                        ]
+            }),
         ]
-    });
-    od.add_array(Array {
-        index: 0x3003,
-        members: vec![]
-    });
-    od.add_array(Array {
-        index: 0x3004,
-        members: vec![
-            OD_SENSOR_STATUS_NUMBER_OF_ENTRIES,
-            OD_SENSOR_STATUS_SENSOR_STATUS_1,
-            OD_SENSOR_STATUS_SENSOR_STATUS_2,
-            OD_SENSOR_STATUS_SENSOR_STATUS_3,
-        ]
-    });
-    od.add_array(Array {
-        index: 0x3006,
-        members: vec![
-            OD_VALVE_1__OPEN_NUMBER_OF_ENTRIES,
-            OD_VALVE_1__OPEN_VALVE_1__OPEN,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1018,
-        members: vec![
-            OD_IDENTITY_OBJECT_HIGHEST_SUB_INDEX_SUPPORTED,
-            OD_IDENTITY_OBJECT_VENDOR_ID,
-            OD_IDENTITY_OBJECT_PRODUCT_CODE,
-            OD_IDENTITY_OBJECT_REVISION_NUMBER,
-            OD_IDENTITY_OBJECT_SERIAL_NUMBER,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1400,
-        members: vec![
-            OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
-            OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_1,
-            OD_RECEIVE_PDO_0_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_1,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1401,
-        members: vec![
-            OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
-            OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_2,
-            OD_RECEIVE_PDO_1_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_2,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1402,
-        members: vec![
-            OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
-            OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_3,
-            OD_RECEIVE_PDO_2_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_3,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1403,
-        members: vec![
-            OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_NUMBER_OF_ENTRIES,
-            OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_COB_ID_USE_BY_RPDO_4,
-            OD_RECEIVE_PDO_3_COMMUNICATION_PARAMETER_TRANSMISSION_TYPE_RPDO_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1600,
-        members: vec![
-            OD_RECEIVE_PDO_0_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_1,
-            OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_1,
-            OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_2,
-            OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_3,
-            OD_RECEIVE_PDO_0_MAPPING_PARAMETER_RPDO_1_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1601,
-        members: vec![
-            OD_RECEIVE_PDO_1_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_2,
-            OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_1,
-            OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_2,
-            OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_3,
-            OD_RECEIVE_PDO_1_MAPPING_PARAMETER_RPDO_2_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1602,
-        members: vec![
-            OD_RECEIVE_PDO_2_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_3,
-            OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_1,
-            OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_2,
-            OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_3,
-            OD_RECEIVE_PDO_2_MAPPING_PARAMETER_RPDO_3_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1603,
-        members: vec![
-            OD_RECEIVE_PDO_3_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_RPDO_4,
-            OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_1,
-            OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_2,
-            OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_3,
-            OD_RECEIVE_PDO_3_MAPPING_PARAMETER_RPDO_4_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1800,
-        members: vec![
-            OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
-            OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_1,
-            OD_TRANSMIT_PDO_0_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_1,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1801,
-        members: vec![
-            OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
-            OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_2,
-            OD_TRANSMIT_PDO_1_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_2,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1802,
-        members: vec![
-            OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
-            OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_3,
-            OD_TRANSMIT_PDO_2_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_3,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1803,
-        members: vec![
-            OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_NUMBER_OF_ENTRIES,
-            OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_COB_ID_USE_BY_TPDO_4,
-            OD_TRANSMIT_PDO_3_COMMUNICATION_PARAMETERS_TRANSMISSION_TYPE_TPDO_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1a00,
-        members: vec![
-            OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_1,
-            OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_1,
-            OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_2,
-            OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_3,
-            OD_TRANSMIT_PDO_0_MAPPING_PARAMETER_TPDO_1_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1a01,
-        members: vec![
-            OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_2,
-            OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_1,
-            OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_2,
-            OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_3,
-            OD_TRANSMIT_PDO_1_MAPPING_PARAMETER_TPDO_2_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1a02,
-        members: vec![
-            OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_3,
-            OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_1,
-            OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_2,
-            OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_3,
-            OD_TRANSMIT_PDO_2_MAPPING_PARAMETER_TPDO_3_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x1a03,
-        members: vec![
-            OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_NUMBER_OF_MAPPED_OBJECTS_TPDO_4,
-            OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_1,
-            OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_2,
-            OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_3,
-            OD_TRANSMIT_PDO_3_MAPPING_PARAMETER_TPDO_4_MAPPING_INFORMATION_4,
-        ]
-    });
-    od.add_record(Record {
-        index: 0x3010,
-        members: vec![
-            OD_READRAWVALUE_TEMPERATURE,
-        ]
-    });
-    od
+    }
 }
