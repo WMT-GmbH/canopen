@@ -12,7 +12,7 @@ def generate(eds_file, destination_path: Path, node_id):
     try:
         with open(destination_path, 'w') as f:
             sys.stdout = f
-            print('use canopen::objectdictionary::{Object, ObjectDictionary, Variable, Array, Record};')
+            print('use canopen::objectdictionary::Variable;')
             print('use canopen::datatypes::*;')
             print()
 
@@ -26,21 +26,18 @@ def generate(eds_file, destination_path: Path, node_id):
                         generate_variable(variable)
 
             print()
-            print('pub fn get_od() -> ObjectDictionary {')
-            print('    ObjectDictionary {')
-            print('        objects: [')
+            print('pub static OD: [Variable; 92] = [')  # TODO 92
             for idx in sorted(od.indices):
                 obj = od[idx]
                 if isinstance(obj, Variable):
                     variable_name = make_variable_name(obj)
-                    add_variable(variable_name, indent=12)
+                    add_variable(variable_name)
                 else:
-                    member_names = [make_variable_name(member) for member in obj.members]
-                    add_complex_obj(obj, member_names, indent=12)
+                    for member in obj.members:
+                        variable_name = make_variable_name(member)
+                        add_variable(variable_name)
 
-            print('        ]')
-            print('    }')
-            print('}')
+            print('];')
     finally:
         sys.stdout = sys.__stdout__
 
@@ -80,7 +77,7 @@ def generate_members(array: Array):
 
 def add_variable(variable_name: str, indent=4):
     indent = ' ' * indent
-    print(indent + f'Object::Variable({variable_name}),')
+    print(indent + variable_name + ',')
 
 
 def add_complex_obj(complex_obj, member_names: list, indent=4):

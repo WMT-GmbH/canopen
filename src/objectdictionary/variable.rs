@@ -1,5 +1,6 @@
 use crate::objectdictionary::CANOpenDataType;
 
+#[derive(Debug)]
 pub struct Variable {
     pub index: u16,
     pub subindex: u8,

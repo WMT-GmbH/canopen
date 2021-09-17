@@ -3,8 +3,8 @@ mod my_od;
 use core::cell::RefCell;
 
 use canopen::objectdictionary::{RefCellDataLink, Variable};
-use canopen::LocalNode;
 use canopen::Network;
+use canopen::{LocalNode, ObjectDictionary};
 
 #[derive(Default)]
 pub struct MockNetwork {
@@ -31,7 +31,9 @@ fn get_data_link_value(node: &LocalNode<MockNetwork>, variable: &Variable) -> Ve
 #[test]
 fn test_expedited_upload() {
     let network = MockNetwork::default();
-    let od = my_od::get_od();
+    let od = ObjectDictionary {
+        objects: &my_od::OD,
+    };
     let mut node = LocalNode::new(2, &network, &od);
 
     node.data_store.add_data_link(
@@ -46,7 +48,9 @@ fn test_expedited_upload() {
 #[test]
 fn test_segmented_upload() {
     let network = MockNetwork::default();
-    let od = my_od::get_od();
+    let od = ObjectDictionary {
+        objects: &my_od::OD,
+    };
     let mut node = LocalNode::new(2, &network, &od);
 
     node.data_store.add_data_link(
@@ -69,7 +73,9 @@ fn test_segmented_upload() {
 #[test]
 fn test_expedited_download() {
     let network = MockNetwork::default();
-    let od = my_od::get_od();
+    let od = ObjectDictionary {
+        objects: &my_od::OD,
+    };
     let mut node = LocalNode::new(2, &network, &od);
 
     node.on_message(&[34, 1, 0, 0, 1, 2, 3, 4]); // size not specified
@@ -91,7 +97,9 @@ fn test_expedited_download() {
 #[test]
 fn test_segmented_download() {
     let network = MockNetwork::default();
-    let od = my_od::get_od();
+    let od = ObjectDictionary {
+        objects: &my_od::OD,
+    };
     let mut node = LocalNode::new(2, &network, &od);
 
     node.on_message(&[33, 0, 32, 0, 13, 0, 0, 0]);
@@ -114,12 +122,14 @@ fn test_segmented_download() {
 #[test]
 fn test_abort() {
     let network = MockNetwork::default();
-    let od = my_od::get_od();
+    let od = ObjectDictionary {
+        objects: &my_od::OD,
+    };
     let mut node = LocalNode::new(2, &network, &od);
     node.on_message(&[7 << 5, 0, 0, 0, 0, 0, 0, 0]); // invalid command specifier
     node.on_message(&[64, 0, 0, 0, 0, 0, 0, 0]); // upload invalid index
-    node.on_message(&[64, 3, 48, 2, 0, 0, 0, 0]); // upload invalid subindex
-                                                  // TODO TOGGLE Bit not alternated
+    node.on_message(&[64, 24, 16, 5, 0, 0, 0, 0]); // upload invalid subindex
+                                                   // TODO TOGGLE Bit not alternated
     assert_eq!(
         network.sent_messages.borrow()[0],
         [128, 0, 0, 0, 0x01, 0x00, 0x04, 0x05]
@@ -130,7 +140,7 @@ fn test_abort() {
     );
     assert_eq!(
         network.sent_messages.borrow()[2],
-        [128, 3, 48, 2, 0x11, 0x00, 0x09, 0x06]
+        [128, 24, 16, 5, 0x11, 0x00, 0x09, 0x06]
     );
 }
 
@@ -138,7 +148,9 @@ fn test_abort() {
 fn test_bad_data() {
     let network = MockNetwork::default();
 
-    let od = my_od::get_od();
+    let od = ObjectDictionary {
+        objects: &my_od::OD,
+    };
     let mut node = LocalNode::new(2, &network, &od);
 
     node.on_message(&[0; 7]);

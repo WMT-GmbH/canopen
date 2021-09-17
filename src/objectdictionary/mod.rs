@@ -7,23 +7,38 @@ pub use data_store::DataStore;
 pub use datatypes::CANOpenDataType;
 pub use variable::Variable;
 
-use alloc::vec::Vec;
-
-pub struct ObjectDictionary {
-    // TODO use fixed sized array and slice binary_search_by instead of BTreeMap
-    pub objects: [Object; 36],
+pub struct ObjectDictionary<'od> {
+    pub objects: &'od [Variable],
 }
 
-impl ObjectDictionary {
-    pub fn get(&self, index: u16) -> Option<&Object> {
-        if let Ok(pos) = self.objects.binary_search_by_key(&index, |obj| match obj {
-            Object::Variable(obj) => obj.index,
-            Object::Array(obj) => obj.index,
-            Object::Record(obj) => obj.index,
-        }) {
-            Some(&self.objects[pos])
-        } else {
-            None
+pub enum ODError {
+    IndexDoesNotExist,
+    SubindexDoesNotExist,
+}
+
+impl ObjectDictionary<'_> {
+    pub fn get(&self, index: u16, subindex: u8) -> Result<&Variable, ODError> {
+        match self
+            .objects
+            .binary_search_by(|obj| (obj.index, obj.subindex).cmp(&(index, subindex)))
+        {
+            Ok(pos) => Ok(&self.objects[pos]),
+            Err(pos) => {
+                // If there is an object with the same index but different subindex
+                // we need to return ODError::SubindexDoesNotExist.
+
+                // Binary search will return the index at which one could insert the searched for variable
+                // If an object with the same index exists, this index with point into to or just past this object.
+                // So if the variables at pos and pos-1 do not match, such an object cannot exist.
+
+                if self.objects[pos].index == index {
+                    return Err(ODError::SubindexDoesNotExist);
+                }
+                if pos != 0 && self.objects[pos - 1].index == index {
+                    return Err(ODError::SubindexDoesNotExist);
+                }
+                Err(ODError::IndexDoesNotExist)
+            }
         }
     }
 }
@@ -38,31 +53,3 @@ impl Index<u16> for ObjectDictionary{
         self.indices.get(&index)
     }
 }*/
-
-pub enum Object {
-    Variable(Variable),
-    Array(Array),
-    Record(Record),
-}
-
-pub struct Array {
-    pub index: u16,
-    pub members: Vec<Variable>,
-}
-
-impl Array {
-    pub fn get(&self, subindex: u8) -> Option<&Variable> {
-        self.members.get(subindex as usize)
-    }
-}
-
-pub struct Record {
-    pub index: u16,
-    pub members: Vec<Variable>,
-}
-
-impl Record {
-    pub fn get(&self, subindex: u8) -> Option<&Variable> {
-        self.members.get(subindex as usize)
-    }
-}

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use super::*;
-use crate::objectdictionary::{DataStore, Object, ObjectDictionary, Variable};
+use crate::objectdictionary::{DataStore, ObjectDictionary};
 use crate::sdo::errors::SDOAbortCode;
 use crate::Network;
 
@@ -19,12 +19,12 @@ pub struct SdoServer<'a, N: Network> {
     _rx_cobid: u32,
     tx_cobid: u32,
     network: &'a N,
-    od: &'a ObjectDictionary,
+    od: &'a ObjectDictionary<'a>,
     state: State,
 }
 
 impl<'a, N: Network> SdoServer<'a, N> {
-    pub fn new(rx_cobid: u32, tx_cobid: u32, network: &'a N, od: &'a ObjectDictionary) -> Self {
+    pub fn new(rx_cobid: u32, tx_cobid: u32, network: &'a N, od: &'a ObjectDictionary<'a>) -> Self {
         SdoServer {
             _rx_cobid: rx_cobid,
             tx_cobid,
@@ -174,7 +174,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
     }
 
     pub fn get_data(&self, data_store: &DataStore) -> Result<Vec<u8>, SDOAbortCode> {
-        let variable = self.find_variable()?;
+        let variable = self.od.get(self.state.index, self.state.subindex)?;
         data_store.get_data(variable)
     }
 
@@ -184,25 +184,8 @@ impl<'a, N: Network> SdoServer<'a, N> {
         data_store: &mut DataStore,
     ) -> Result<(), SDOAbortCode> {
         // TODO check if writable
-        let variable = self.find_variable()?;
+        let variable = self.od.get(self.state.index, self.state.subindex)?;
         data_store.set_data(variable, data)
-    }
-
-    fn find_variable(&self) -> Result<&'a Variable, SDOAbortCode> {
-        let object = self
-            .od
-            .get(self.state.index)
-            .ok_or(SDOAbortCode::ObjectDoesNotExist)?;
-
-        match object {
-            Object::Variable(variable) => Ok(variable),
-            Object::Array(array) => Ok(array
-                .get(self.state.subindex)
-                .ok_or(SDOAbortCode::SubindexDoesNotExist)?),
-            Object::Record(record) => Ok(record
-                .get(self.state.subindex)
-                .ok_or(SDOAbortCode::SubindexDoesNotExist)?),
-        }
     }
 }
 

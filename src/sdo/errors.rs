@@ -1,3 +1,4 @@
+use crate::objectdictionary::ODError;
 use core::fmt;
 
 #[repr(u32)]
@@ -114,5 +115,14 @@ impl fmt::Display for SDOAbortCode {
 
         //write!(f, "Code 0x{:08X}, {}", self as u32, text)
         write!(f, "{}", text)
+    }
+}
+
+impl From<ODError> for SDOAbortCode {
+    fn from(e: ODError) -> Self {
+        match e {
+            ODError::IndexDoesNotExist => SDOAbortCode::ObjectDoesNotExist,
+            ODError::SubindexDoesNotExist => SDOAbortCode::SubindexDoesNotExist,
+        }
     }
 }

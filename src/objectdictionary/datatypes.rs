@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 
 pub use CANOpenDataType::*;
 
+#[derive(Debug)]
 #[allow(non_camel_case_types)]
 pub enum CANOpenDataType {
     BOOLEAN(bool),
