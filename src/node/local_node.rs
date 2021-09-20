@@ -1,19 +1,20 @@
 use crate::network::Network;
-use crate::objectdictionary::{DataStore, ObjectDictionary};
+use crate::objectdictionary::ObjectDictionary;
 use crate::sdo::SdoServer;
 
 pub struct LocalNode<'a, N: Network> {
     pub sdo_server: SdoServer<'a, N>,
-    pub data_store: DataStore,
 }
 
 impl<'a, N: Network> LocalNode<'a, N> {
-    pub fn new(node_id: u8, network: &'a N, od: &'a ObjectDictionary<'a>) -> Self {
-        let data_store = DataStore::default();
-
+    pub fn new(node_id: u8, network: &'a N, object_dictionary: &'a ObjectDictionary<'a>) -> Self {
         LocalNode {
-            sdo_server: SdoServer::new(0x600 + node_id as u32, 0x580 + node_id as u32, network, od),
-            data_store,
+            sdo_server: SdoServer::new(
+                0x600 + node_id as u32,
+                0x580 + node_id as u32,
+                network,
+                object_dictionary,
+            ),
         }
     }
 
@@ -21,7 +22,7 @@ impl<'a, N: Network> LocalNode<'a, N> {
         // TODO message dispatch
         if let Ok(data) = data.try_into() {
             // ignore messages with wrong length
-            self.sdo_server.on_request(data, &mut self.data_store)
+            self.sdo_server.on_request(data)
         }
     }
 }

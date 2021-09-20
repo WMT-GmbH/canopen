@@ -1,8 +1,8 @@
-pub mod server;
+pub use errors::SDOAbortCode;
 pub use server::SdoServer;
 
 pub mod errors;
-pub use errors::SDOAbortCode;
+pub mod server;
 
 const REQUEST_SEGMENT_DOWNLOAD: u8 = 0 << 5;
 const REQUEST_DOWNLOAD: u8 = 1 << 5;

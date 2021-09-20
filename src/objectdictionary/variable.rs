@@ -1,20 +1,17 @@
-use crate::objectdictionary::CANOpenDataType;
+use crate::objectdictionary::datalink::DataLink;
 
-#[derive(Debug)]
-pub struct Variable {
+pub struct Variable<'a> {
     pub index: u16,
     pub subindex: u8,
-    pub unique_id: u32,
-    pub default_value: Option<CANOpenDataType>,
+    pub datalink: &'a dyn DataLink,
 }
 
-impl Variable {
-    pub const fn new(index: u16, subindex: u8, default_value: Option<CANOpenDataType>) -> Self {
+impl<'a> Variable<'a> {
+    pub const fn new(index: u16, subindex: u8, datalink: &'a dyn DataLink) -> Self {
         Variable {
             index,
             subindex,
-            unique_id: ((index as u32) << 8) + subindex as u32,
-            default_value,
+            datalink,
         }
     }
 }

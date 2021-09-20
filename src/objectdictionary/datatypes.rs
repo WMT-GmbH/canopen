@@ -1,10 +1,8 @@
-use alloc::vec::Vec;
-
 pub use CANOpenDataType::*;
 
 #[derive(Debug)]
 #[allow(non_camel_case_types)]
-pub enum CANOpenDataType {
+pub enum CANOpenDataType<'a> {
     BOOLEAN(bool),
     INTEGER8(i8),
     INTEGER16(i16),
@@ -16,29 +14,10 @@ pub enum CANOpenDataType {
     UNSIGNED64(u64),
     REAL32(f32),
     REAL64(f64),
-    VISIBLE_STRING(&'static str),
-    OCTET_STRING(&'static str),
-    UNICODE_STRING(&'static str),
+    VISIBLE_STRING(&'a str),
+    OCTET_STRING(&'a [u8]),
+    UNICODE_STRING(&'a str),
     TIME_OF_DAY,
     TIME_DIFFERENCE,
     DOMAIN, // TODO Strings and Domain
-}
-
-impl From<&CANOpenDataType> for Vec<u8> {
-    fn from(data: &CANOpenDataType) -> Self {
-        match data {
-            BOOLEAN(data) => vec![*data as u8],
-            INTEGER8(data) => data.to_le_bytes().to_vec(),
-            INTEGER16(data) => data.to_le_bytes().to_vec(),
-            INTEGER32(data) => data.to_le_bytes().to_vec(),
-            INTEGER64(data) => data.to_le_bytes().to_vec(),
-            UNSIGNED8(data) => data.to_le_bytes().to_vec(),
-            UNSIGNED16(data) => data.to_le_bytes().to_vec(),
-            UNSIGNED32(data) => data.to_le_bytes().to_vec(),
-            UNSIGNED64(data) => data.to_le_bytes().to_vec(),
-            REAL32(data) => data.to_le_bytes().to_vec(),
-            REAL64(data) => data.to_le_bytes().to_vec(),
-            _ => unimplemented!(),
-        }
-    }
 }

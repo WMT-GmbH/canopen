@@ -1,19 +1,12 @@
+#![feature(const_fn_trait_bound)]
 #![warn(rust_2018_idioms)]
 #![no_std]
-
-#[allow(unused_imports)]
-#[macro_use]
-extern crate alloc;
-
-pub mod network;
-pub mod node;
-pub mod objectdictionary;
-pub mod sdo;
 
 pub use network::Network;
 pub use node::LocalNode;
 pub use objectdictionary::{datatypes, ObjectDictionary};
 
-#[cfg(test)]
-#[macro_use]
-extern crate std;
+pub mod network;
+pub mod node;
+pub mod objectdictionary;
+pub mod sdo;

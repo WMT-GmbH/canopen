@@ -1,5 +1,6 @@
-use crate::objectdictionary::ODError;
 use core::fmt;
+
+use crate::objectdictionary::ODError;
 
 #[repr(u32)]
 #[derive(Debug)]
