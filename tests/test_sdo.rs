@@ -1,11 +1,13 @@
 use core::cell::RefCell;
 
-use canopen::objectdictionary::datalink::DataLink;
+use canopen::objectdictionary::datalink::{DataLink, WriteStream};
 use canopen::objectdictionary::Variable;
 use canopen::sdo::SDOAbortCode;
 use canopen::Network;
 use canopen::{LocalNode, ObjectDictionary};
 use core::sync::atomic::AtomicU8;
+use std::num::NonZeroUsize;
+use std::sync::atomic::AtomicU32;
 
 #[derive(Default)]
 pub struct MockNetwork {
@@ -20,8 +22,8 @@ impl Network for MockNetwork {
 
 struct MockObject(RefCell<Vec<u8>>);
 impl DataLink for MockObject {
-    fn size(&self) -> usize {
-        self.0.borrow().len()
+    fn size(&self) -> Option<NonZeroUsize> {
+        None
     }
 
     fn read(&self, buf: &mut [u8], offset: usize) -> Result<(), SDOAbortCode> {
@@ -30,19 +32,19 @@ impl DataLink for MockObject {
         Ok(())
     }
 
-    fn write(&self, data: &[u8], _offset: usize, _no_more_data: bool) -> Result<(), SDOAbortCode> {
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         let mut buf = self.0.borrow_mut();
-        if _offset == 0 {
+        if write_stream.offset == 0 {
             buf.clear();
         }
-        buf.extend_from_slice(data);
+        buf.extend_from_slice(write_stream.new_data);
         Ok(())
     }
 }
 
 #[test]
 fn test_expedited_upload() {
-    let obj = MockObject(RefCell::new(vec![1, 2, 3, 4]));
+    let obj = AtomicU32::new(0x04030201);
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);
 

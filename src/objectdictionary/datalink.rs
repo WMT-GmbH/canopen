@@ -1,89 +1,83 @@
 use crate::sdo::SDOAbortCode;
+use core::num::NonZeroUsize;
 use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, Ordering};
 
 pub trait DataLink {
-    fn size(&self) -> usize;
+    fn size(&self) -> Option<NonZeroUsize>;
     fn read(&self, buf: &mut [u8], offset: usize) -> Result<(), SDOAbortCode>;
-    fn write(&self, data: &[u8], offset: usize, no_more_data: bool) -> Result<(), SDOAbortCode>;
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;
+}
+
+pub struct WriteStream<'a> {
+    pub index: u16,
+    pub subindex: u8,
+    pub new_data: &'a [u8],
+    pub offset: usize,
+    pub is_last_segment: bool,
 }
 
 impl DataLink for AtomicBool {
-    fn size(&self) -> usize {
-        1
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(1)
     }
     fn read(&self, buf: &mut [u8], _offset: usize) -> Result<(), SDOAbortCode> {
         buf[0] = self.load(Ordering::Relaxed) as u8;
         Ok(())
     }
-
-    fn write(&self, data: &[u8], _offset: usize, no_more_data: bool) -> Result<(), SDOAbortCode> {
-        if data.len() != 1 {
-            Err(SDOAbortCode::WrongLength)
-        } else if data[0] > 1 {
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        if write_stream.new_data[0] > 0 {
             Err(SDOAbortCode::InvalidValue)
         } else {
-            self.store(data[0] > 0, Ordering::Relaxed);
+            self.store(write_stream.new_data[0] > 0, Ordering::Relaxed);
             Ok(())
         }
     }
 }
 
 impl DataLink for AtomicU8 {
-    fn size(&self) -> usize {
-        1
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(1)
     }
     fn read(&self, buf: &mut [u8], _offset: usize) -> Result<(), SDOAbortCode> {
         // TODO check len, offset
         buf[0] = self.load(Ordering::Relaxed);
         Ok(())
     }
-
-    fn write(&self, data: &[u8], _offset: usize, no_more_data: bool) -> Result<(), SDOAbortCode> {
-        if data.len() != 1 {
-            Err(SDOAbortCode::WrongLength)
-        } else {
-            self.store(data[0], Ordering::Relaxed);
-            Ok(())
-        }
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        self.store(write_stream.new_data[0], Ordering::Relaxed);
+        Ok(())
     }
 }
 
 impl DataLink for AtomicU16 {
-    fn size(&self) -> usize {
-        2
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(2)
     }
     fn read(&self, buf: &mut [u8], _offset: usize) -> Result<(), SDOAbortCode> {
         buf.copy_from_slice(&self.load(Ordering::Relaxed).to_le_bytes());
         Ok(())
     }
-
-    fn write(&self, data: &[u8], _offset: usize, no_more_data: bool) -> Result<(), SDOAbortCode> {
-        if data.len() != 2 {
-            Err(SDOAbortCode::WrongLength)
-        } else {
-            let data = data.try_into().unwrap();
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        if let Ok(data) = write_stream.new_data.try_into() {
             self.store(u16::from_le_bytes(data), Ordering::Relaxed);
-            Ok(())
         }
+        Ok(())
     }
 }
 
 impl DataLink for AtomicU32 {
-    fn size(&self) -> usize {
-        4
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(4)
     }
     fn read(&self, buf: &mut [u8], _offset: usize) -> Result<(), SDOAbortCode> {
         buf.copy_from_slice(&self.load(Ordering::Relaxed).to_le_bytes());
         Ok(())
     }
 
-    fn write(&self, data: &[u8], _offset: usize, no_more_data: bool) -> Result<(), SDOAbortCode> {
-        if data.len() != 4 {
-            Err(SDOAbortCode::WrongLength)
-        } else {
-            let data = data.try_into().unwrap();
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        if let Ok(data) = write_stream.new_data.try_into() {
             self.store(u32::from_le_bytes(data), Ordering::Relaxed);
-            Ok(())
         }
+        Ok(())
     }
 }

@@ -5,6 +5,8 @@ use crate::sdo::errors::SDOAbortCode;
 use crate::Network;
 
 use super::*;
+use crate::objectdictionary::datalink::WriteStream;
+use core::cmp::Ordering;
 
 type RequestResult = Result<Option<[u8; 8]>, SDOAbortCode>;
 
@@ -49,10 +51,16 @@ impl<'a, N: Network> SdoServer<'a, N> {
         let ccs = data[0] & 0xE0;
 
         let result = match ccs {
-            REQUEST_UPLOAD => self.init_upload(data),
-            REQUEST_SEGMENT_UPLOAD => self.segmented_upload(data[0]),
-            REQUEST_DOWNLOAD => self.init_download(data),
+            REQUEST_DOWNLOAD => {
+                self.set_index(data);
+                self.init_download(data)
+            }
             REQUEST_SEGMENT_DOWNLOAD => self.segmented_download(data),
+            REQUEST_UPLOAD => {
+                self.set_index(data);
+                self.init_upload(data)
+            }
+            REQUEST_SEGMENT_UPLOAD => self.segmented_upload(data[0]),
             REQUEST_ABORTED => Ok(None),
             _ => Err(SDOAbortCode::CommandSpecifierError),
         };
@@ -63,77 +71,12 @@ impl<'a, N: Network> SdoServer<'a, N> {
         };
     }
 
-    fn init_upload(&mut self, request: &[u8; 8]) -> RequestResult {
+    fn set_index(&mut self, request: &[u8; 8]) {
         self.last_index = ((request[2] as u16) << 8) + request[1] as u16;
         self.last_subindex = request[3];
-
-        let variable = self.od.get(self.last_index, self.last_subindex)?;
-        let mut res_command = RESPONSE_UPLOAD | SIZE_SPECIFIED;
-        let mut response = [0; 8];
-
-        let size = variable.datalink.size();
-        if size <= 4 {
-            res_command |= EXPEDITED;
-            res_command |= (4 - size as u8) << 2;
-            variable.datalink.read(&mut response[4..4 + size], 0)?;
-        } else {
-            response[4..].copy_from_slice(&(size as u32).to_le_bytes());
-            self.state = State::SegmentedUpload {
-                toggle_bit: 0,
-                bytes_uploaded: 0,
-                variable,
-            };
-        }
-
-        response[0] = res_command;
-        response[1..4].copy_from_slice(&request[1..4]);
-
-        Ok(Some(response))
-    }
-
-    fn segmented_upload(&mut self, command: u8) -> RequestResult {
-        match &mut self.state {
-            State::SegmentedUpload {
-                toggle_bit,
-                bytes_uploaded,
-                variable,
-            } => {
-                if command & TOGGLE_BIT != *toggle_bit {
-                    return Err(SDOAbortCode::ToggleBitNotAlternated);
-                }
-
-                let mut response = [0; 8];
-                let total_size = variable.datalink.size();
-                let size = cmp::min(total_size - *bytes_uploaded, 7);
-                variable
-                    .datalink
-                    .read(&mut response[1..1 + size], *bytes_uploaded)?;
-
-                *bytes_uploaded += size;
-
-                let mut res_command = RESPONSE_SEGMENT_UPLOAD;
-                res_command |= *toggle_bit; // add toggle bit
-                res_command |= (7 - size as u8) << 1; // add number of bytes not used
-
-                if *bytes_uploaded == total_size {
-                    res_command |= NO_MORE_DATA; // nothing left in buffer
-                }
-
-                *toggle_bit ^= TOGGLE_BIT;
-
-                response[0] = res_command;
-                Ok(Some(response))
-            }
-            _ => {
-                todo!()
-            }
-        }
     }
 
     fn init_download(&mut self, request: &[u8; 8]) -> RequestResult {
-        // TODO check if writable
-        self.last_index = ((request[2] as u16) << 8) + request[1] as u16;
-        self.last_subindex = request[3];
         let variable = self.od.get(self.last_index, self.last_subindex)?;
 
         let command = request[0];
@@ -142,9 +85,28 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 0 => 4,
                 _ => 4 - ((command >> 2) & 0x3) as usize,
             };
+            if let Some(expected_size) = variable.datalink.size() {
+                check_sizes(size, expected_size.get())?;
+            }
 
-            variable.datalink.write(&request[4..4 + size], 0, true)?;
+            let stream = WriteStream {
+                index: self.last_index,
+                subindex: self.last_subindex,
+                new_data: &request[4..4 + size],
+                offset: 0,
+                is_last_segment: true,
+            };
+
+            variable.datalink.write(&stream)?;
         } else {
+            if command & SIZE_SPECIFIED != 0 {
+                if let Some(expected_size) = variable.datalink.size() {
+                    let size = u32::from_le_bytes(request[4..8].try_into().unwrap()) as usize;
+
+                    check_sizes(size, expected_size.get())?;
+                }
+            }
+
             self.state = State::SegmentedDownload {
                 toggle_bit: 0,
                 bytes_downloaded: 0,
@@ -152,8 +114,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
             };
         }
 
-        let mut response = [0; 8];
-        response[0] = RESPONSE_DOWNLOAD;
+        let mut response = [RESPONSE_DOWNLOAD, 0, 0, 0, 0, 0, 0, 0];
         response[1..4].copy_from_slice(&request[1..4]);
 
         Ok(Some(response))
@@ -175,9 +136,14 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 let no_more_data = command & NO_MORE_DATA != 0;
 
                 // write data
-                variable
-                    .datalink
-                    .write(&request[1..last_byte], *bytes_downloaded, no_more_data)?;
+                let stream = WriteStream {
+                    index: self.last_index,
+                    subindex: self.last_subindex,
+                    new_data: &request[1..last_byte],
+                    offset: *bytes_downloaded,
+                    is_last_segment: no_more_data,
+                };
+                variable.datalink.write(&stream)?;
                 *bytes_downloaded += last_byte - 1;
 
                 // respond
@@ -185,9 +151,70 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 *toggle_bit ^= TOGGLE_BIT;
                 Ok(Some(response))
             }
-            _ => {
-                todo!()
+            _ => Err(SDOAbortCode::CommandSpecifierError),
+        }
+    }
+    fn init_upload(&mut self, request: &[u8; 8]) -> RequestResult {
+        let variable = self.od.get(self.last_index, self.last_subindex)?;
+        let mut response = [RESPONSE_UPLOAD, 0, 0, 0, 0, 0, 0, 0];
+        response[1..4].copy_from_slice(&request[1..4]);
+
+        if let Some(size) = variable.datalink.size() {
+            let size = size.get();
+            response[0] |= SIZE_SPECIFIED;
+            if size <= 4 {
+                response[0] |= EXPEDITED;
+                response[0] |= (4 - size as u8) << 2;
+                variable.datalink.read(&mut response[4..4 + size], 0)?;
+                return Ok(Some(response));
+            } else {
+                response[4..].copy_from_slice(&(size as u32).to_le_bytes());
             }
+        }
+
+        self.state = State::SegmentedUpload {
+            toggle_bit: 0,
+            bytes_uploaded: 0,
+            variable,
+        };
+
+        Ok(Some(response))
+    }
+
+    fn segmented_upload(&mut self, command: u8) -> RequestResult {
+        match &mut self.state {
+            State::SegmentedUpload {
+                toggle_bit,
+                bytes_uploaded,
+                variable,
+            } => {
+                if command & TOGGLE_BIT != *toggle_bit {
+                    return Err(SDOAbortCode::ToggleBitNotAlternated);
+                }
+
+                let mut response = [0; 8];
+                let total_size = variable.datalink.size().unwrap().get(); // TODO
+                let size = cmp::min(total_size - *bytes_uploaded, 7);
+                variable
+                    .datalink
+                    .read(&mut response[1..1 + size], *bytes_uploaded)?;
+
+                *bytes_uploaded += size;
+
+                let mut res_command = RESPONSE_SEGMENT_UPLOAD;
+                res_command |= *toggle_bit; // add toggle bit
+                res_command |= (7 - size as u8) << 1; // add number of bytes not used
+
+                if *bytes_uploaded == total_size {
+                    res_command |= NO_MORE_DATA; // nothing left in buffer
+                }
+
+                *toggle_bit ^= TOGGLE_BIT;
+
+                response[0] = res_command;
+                Ok(Some(response))
+            }
+            _ => Err(SDOAbortCode::CommandSpecifierError),
         }
     }
 
@@ -211,5 +238,13 @@ impl<'a, N: Network> SdoServer<'a, N> {
 
     fn send_response(&mut self, data: [u8; 8]) {
         self.network.send_message(self.tx_cobid, data);
+    }
+}
+
+fn check_sizes(given: usize, expected: usize) -> Result<(), SDOAbortCode> {
+    match given.cmp(&expected) {
+        Ordering::Less => Err(SDOAbortCode::TooShort),
+        Ordering::Greater => Err(SDOAbortCode::TooLong),
+        Ordering::Equal => Ok(()),
     }
 }
