@@ -1,13 +1,13 @@
 use core::cell::RefCell;
+use core::num::NonZeroUsize;
+use core::sync::atomic::AtomicU32;
+use core::sync::atomic::AtomicU8;
 
-use canopen::objectdictionary::datalink::{DataLink, WriteStream};
+use canopen::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
 use canopen::objectdictionary::Variable;
 use canopen::sdo::SDOAbortCode;
 use canopen::Network;
 use canopen::{LocalNode, ObjectDictionary};
-use core::sync::atomic::AtomicU8;
-use std::num::NonZeroUsize;
-use std::sync::atomic::AtomicU32;
 
 #[derive(Default)]
 pub struct MockNetwork {
@@ -26,9 +26,20 @@ impl DataLink for MockObject {
         None
     }
 
-    fn read(&self, buf: &mut [u8], offset: usize) -> Result<(), SDOAbortCode> {
+    fn read(&self, read_stream: &mut ReadStream) -> Result<(), SDOAbortCode> {
         let data = self.0.borrow();
-        buf.copy_from_slice(&data[offset..offset + buf.len()]);
+        let unread_data = &data[*read_stream.total_bytes_read..];
+
+        let new_data_len = if unread_data.len() <= read_stream.buf.len() {
+            read_stream.is_last_segment = true;
+            unread_data.len()
+        } else {
+            read_stream.buf.len()
+        };
+
+        read_stream.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
+        *read_stream.total_bytes_read += new_data_len;
+
         Ok(())
     }
 
@@ -40,52 +51,6 @@ impl DataLink for MockObject {
         buf.extend_from_slice(write_stream.new_data);
         Ok(())
     }
-}
-
-#[test]
-fn test_expedited_upload() {
-    let obj = AtomicU32::new(0x04030201);
-    let objects = [Variable::new(1, 0, &obj)];
-    let od = ObjectDictionary::new(&objects);
-
-    let network = MockNetwork::default();
-
-    let mut node = LocalNode::new(2, &network, &od);
-
-    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    assert_eq!(
-        network.sent_messages.borrow()[0],
-        [0x43, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
-    );
-}
-
-#[test]
-fn test_segmented_upload() {
-    let obj = MockObject(RefCell::new(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]));
-
-    let objects = [Variable::new(1, 0, &obj)];
-    let od = ObjectDictionary::new(&objects);
-
-    let network = MockNetwork::default();
-
-    let mut node = LocalNode::new(2, &network, &od);
-
-    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-
-    assert_eq!(
-        network.sent_messages.borrow()[0],
-        [0x41, 0x01, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00]
-    );
-    assert_eq!(
-        network.sent_messages.borrow()[1],
-        [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
-    );
-    assert_eq!(
-        network.sent_messages.borrow()[2],
-        [0x1b, 0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
 }
 
 #[test]
@@ -145,6 +110,81 @@ fn test_segmented_download() {
     );
 
     assert_eq!(obj.0.borrow().as_slice(), b"A long string");
+}
+
+#[test]
+fn test_expedited_upload() {
+    let obj = AtomicU32::new(0x04030201);
+    let objects = [Variable::new(1, 0, &obj)];
+    let od = ObjectDictionary::new(&objects);
+
+    let network = MockNetwork::default();
+
+    let mut node = LocalNode::new(2, &network, &od);
+
+    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    assert_eq!(
+        network.sent_messages.borrow()[0],
+        [0x43, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
+    );
+}
+
+#[test]
+fn test_segmented_upload() {
+    let obj = MockObject(RefCell::new(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]));
+
+    let objects = [Variable::new(1, 0, &obj)];
+    let od = ObjectDictionary::new(&objects);
+
+    let network = MockNetwork::default();
+
+    let mut node = LocalNode::new(2, &network, &od);
+
+    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    node.on_message(&[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
+    assert_eq!(
+        network.sent_messages.borrow()[0],
+        [0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+    );
+    assert_eq!(
+        network.sent_messages.borrow()[1],
+        [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
+    );
+    assert_eq!(
+        network.sent_messages.borrow()[2],
+        [0x1b, 0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00]
+    );
+}
+
+#[test]
+fn test_segmented_upload_with_known_size() {
+    let obj = "A long string";
+
+    let objects = [Variable::new(1, 0, &obj)];
+    let od = ObjectDictionary::new(&objects);
+
+    let network = MockNetwork::default();
+
+    let mut node = LocalNode::new(2, &network, &od);
+
+    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    node.on_message(&[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
+    assert_eq!(
+        network.sent_messages.borrow()[0],
+        [0x41, 0x01, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00]
+    );
+    assert_eq!(
+        network.sent_messages.borrow()[1],
+        [0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]
+    );
+    assert_eq!(
+        network.sent_messages.borrow()[2],
+        [0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]
+    );
 }
 
 #[test]

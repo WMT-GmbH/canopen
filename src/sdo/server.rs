@@ -1,26 +1,25 @@
-use core::cmp;
+use core::cmp::Ordering;
 
+use crate::objectdictionary::datalink::{ReadStream, WriteStream};
 use crate::objectdictionary::{ObjectDictionary, Variable};
 use crate::sdo::errors::SDOAbortCode;
 use crate::Network;
 
 use super::*;
-use crate::objectdictionary::datalink::WriteStream;
-use core::cmp::Ordering;
 
 type RequestResult = Result<Option<[u8; 8]>, SDOAbortCode>;
 
 enum State<'a> {
     None,
-    SegmentedUpload {
-        toggle_bit: u8,
-        variable: &'a Variable<'a>,
-        bytes_uploaded: usize,
-    },
     SegmentedDownload {
         toggle_bit: u8,
         variable: &'a Variable<'a>,
         bytes_downloaded: usize,
+    },
+    SegmentedUpload {
+        toggle_bit: u8,
+        variable: &'a Variable<'a>,
+        bytes_uploaded: usize,
     },
 }
 
@@ -165,7 +164,15 @@ impl<'a, N: Network> SdoServer<'a, N> {
             if size <= 4 {
                 response[0] |= EXPEDITED;
                 response[0] |= (4 - size as u8) << 2;
-                variable.datalink.read(&mut response[4..4 + size], 0)?;
+
+                let mut read_stream = ReadStream {
+                    index: self.last_index,
+                    subindex: self.last_subindex,
+                    buf: &mut response[4..4 + size],
+                    total_bytes_read: &mut 0,
+                    is_last_segment: false,
+                };
+                variable.datalink.read(&mut read_stream)?;
                 return Ok(Some(response));
             } else {
                 response[4..].copy_from_slice(&(size as u32).to_le_bytes());
@@ -193,19 +200,22 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 }
 
                 let mut response = [0; 8];
-                let total_size = variable.datalink.size().unwrap().get(); // TODO
-                let size = cmp::min(total_size - *bytes_uploaded, 7);
-                variable
-                    .datalink
-                    .read(&mut response[1..1 + size], *bytes_uploaded)?;
-
-                *bytes_uploaded += size;
+                let bytes_uploaded_prev = *bytes_uploaded;
+                let mut read_stream = ReadStream {
+                    index: self.last_index,
+                    subindex: self.last_subindex,
+                    buf: &mut response[1..8],
+                    total_bytes_read: bytes_uploaded,
+                    is_last_segment: false,
+                };
+                variable.datalink.read(&mut read_stream)?;
+                let size = *read_stream.total_bytes_read - bytes_uploaded_prev;
 
                 let mut res_command = RESPONSE_SEGMENT_UPLOAD;
                 res_command |= *toggle_bit; // add toggle bit
                 res_command |= (7 - size as u8) << 1; // add number of bytes not used
 
-                if *bytes_uploaded == total_size {
+                if read_stream.is_last_segment {
                     res_command |= NO_MORE_DATA; // nothing left in buffer
                 }
 
