@@ -2,6 +2,7 @@ use core::cell::RefCell;
 
 use canopen::objectdictionary::datalink::DataLink;
 use canopen::objectdictionary::Variable;
+use canopen::sdo::SDOAbortCode;
 use canopen::Network;
 use canopen::{LocalNode, ObjectDictionary};
 use core::sync::atomic::AtomicU8;
@@ -23,17 +24,19 @@ impl DataLink for MockObject {
         self.0.borrow().len()
     }
 
-    fn read(&self, buf: &mut [u8], offset: usize) {
+    fn read(&self, buf: &mut [u8], offset: usize) -> Result<(), SDOAbortCode> {
         let data = self.0.borrow();
         buf.copy_from_slice(&data[offset..offset + buf.len()]);
+        Ok(())
     }
 
-    fn write(&self, data: &[u8], _offset: usize) {
+    fn write(&self, data: &[u8], _offset: usize, _no_more_data: bool) -> Result<(), SDOAbortCode> {
         let mut buf = self.0.borrow_mut();
         if _offset == 0 {
             buf.clear();
         }
         buf.extend_from_slice(data);
+        Ok(())
     }
 }
 

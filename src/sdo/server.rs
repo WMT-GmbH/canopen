@@ -75,7 +75,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
         if size <= 4 {
             res_command |= EXPEDITED;
             res_command |= (4 - size as u8) << 2;
-            variable.datalink.read(&mut response[4..4 + size], 0);
+            variable.datalink.read(&mut response[4..4 + size], 0)?;
         } else {
             response[4..].copy_from_slice(&(size as u32).to_le_bytes());
             self.state = State::SegmentedUpload {
@@ -86,9 +86,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
         }
 
         response[0] = res_command;
-        response[1] = self.last_index as u8;
-        response[2] = (self.last_index >> 8) as u8;
-        response[3] = self.last_subindex;
+        response[1..4].copy_from_slice(&request[1..4]);
 
         Ok(Some(response))
     }
@@ -109,7 +107,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 let size = cmp::min(total_size - *bytes_uploaded, 7);
                 variable
                     .datalink
-                    .read(&mut response[1..1 + size], *bytes_uploaded);
+                    .read(&mut response[1..1 + size], *bytes_uploaded)?;
 
                 *bytes_uploaded += size;
 
@@ -144,7 +142,8 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 0 => 4,
                 _ => 4 - ((command >> 2) & 0x3) as usize,
             };
-            variable.datalink.write(&request[4..4 + size], 0);
+
+            variable.datalink.write(&request[4..4 + size], 0, true)?;
         } else {
             self.state = State::SegmentedDownload {
                 toggle_bit: 0,
@@ -153,13 +152,10 @@ impl<'a, N: Network> SdoServer<'a, N> {
             };
         }
 
-        // ---------- TODO optimize
         let mut response = [0; 8];
         response[0] = RESPONSE_DOWNLOAD;
-        response[1] = self.last_index as u8;
-        response[2] = (self.last_index >> 8) as u8;
-        response[3] = self.last_subindex;
-        // ----------
+        response[1..4].copy_from_slice(&request[1..4]);
+
         Ok(Some(response))
     }
 
@@ -170,24 +166,23 @@ impl<'a, N: Network> SdoServer<'a, N> {
                 variable,
                 bytes_downloaded,
             } => {
+                // unpack command
                 let command = request[0];
                 if command & TOGGLE_BIT != *toggle_bit {
                     return Err(SDOAbortCode::ToggleBitNotAlternated);
                 }
                 let last_byte = (8 - ((command >> 1) & 0x7)) as usize;
+                let no_more_data = command & NO_MORE_DATA != 0;
+
+                // write data
                 variable
                     .datalink
-                    .write(&request[1..last_byte], *bytes_downloaded);
+                    .write(&request[1..last_byte], *bytes_downloaded, no_more_data)?;
                 *bytes_downloaded += last_byte - 1;
 
-                if command & NO_MORE_DATA != 0 {
-                    // TODO
-                }
-
-                let res_command = RESPONSE_SEGMENT_DOWNLOAD | *toggle_bit;
-                let response = [res_command, 0, 0, 0, 0, 0, 0, 0];
+                // respond
+                let response = [RESPONSE_SEGMENT_DOWNLOAD | *toggle_bit, 0, 0, 0, 0, 0, 0, 0];
                 *toggle_bit ^= TOGGLE_BIT;
-
                 Ok(Some(response))
             }
             _ => {
@@ -197,7 +192,6 @@ impl<'a, N: Network> SdoServer<'a, N> {
     }
 
     fn abort(&mut self, abort_error: SDOAbortCode) {
-        // TODO abort with current or last indices?
         let [index_lo, index_hi] = self.last_index.to_le_bytes();
         let subindex = self.last_subindex;
         let code: [u8; 4] = (abort_error as u32).to_le_bytes();
@@ -218,17 +212,4 @@ impl<'a, N: Network> SdoServer<'a, N> {
     fn send_response(&mut self, data: [u8; 8]) {
         self.network.send_message(self.tx_cobid, data);
     }
-
-    /*    pub fn get_data(&self, buf: &mut [u8], offset: usize) -> Result<(), SDOAbortCode> {
-        let variable = self.od.get(self.state.index, self.state.subindex)?; // TODO cache
-        variable.datalink.read(buf, offset);
-        Ok(())
-    }
-
-    pub fn set_data(&mut self, data: &[u8], offset: usize) -> Result<(), SDOAbortCode> {
-        // TODO check if writable
-        let variable = self.od.get(self.state.index, self.state.subindex)?; // TODO cache
-        variable.datalink.write(&data, offset);
-        Ok(())
-    }*/
 }
