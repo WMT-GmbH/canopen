@@ -8,6 +8,7 @@ use canopen::objectdictionary::Variable;
 use canopen::sdo::SDOAbortCode;
 use canopen::Network;
 use canopen::{LocalNode, ObjectDictionary};
+use std::sync::RwLock;
 
 #[derive(Default)]
 pub struct MockNetwork {
@@ -20,14 +21,14 @@ impl Network for MockNetwork {
     }
 }
 
-struct MockObject(RefCell<Vec<u8>>);
+struct MockObject(RwLock<Vec<u8>>);
 impl DataLink for MockObject {
     fn size(&self) -> Option<NonZeroUsize> {
         None
     }
 
     fn read(&self, read_stream: &mut ReadStream) -> Result<(), SDOAbortCode> {
-        let data = self.0.borrow();
+        let data = self.0.read().unwrap();
         let unread_data = &data[*read_stream.total_bytes_read..];
 
         let new_data_len = if unread_data.len() <= read_stream.buf.len() {
@@ -44,7 +45,7 @@ impl DataLink for MockObject {
     }
 
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        let mut buf = self.0.borrow_mut();
+        let mut buf = self.0.write().unwrap();
         if write_stream.offset == 0 {
             buf.clear();
         }
@@ -55,8 +56,8 @@ impl DataLink for MockObject {
 
 #[test]
 fn test_expedited_download() {
-    let obj_1 = MockObject(RefCell::new(vec![]));
-    let obj_2 = MockObject(RefCell::new(vec![]));
+    let obj_1 = MockObject(RwLock::new(vec![]));
+    let obj_2 = MockObject(RwLock::new(vec![]));
 
     let objects = [Variable::new(1, 0, &obj_1), Variable::new(2, 0, &obj_2)];
     let od = ObjectDictionary::new(&objects);
@@ -77,13 +78,13 @@ fn test_expedited_download() {
         [0x60, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
-    assert_eq!(obj_1.0.borrow().as_slice(), [1, 2, 3, 4]);
-    assert_eq!(obj_2.0.borrow().as_slice(), [1, 2, 3]);
+    assert_eq!(obj_1.0.read().unwrap().as_slice(), [1, 2, 3, 4]);
+    assert_eq!(obj_2.0.read().unwrap().as_slice(), [1, 2, 3]);
 }
 
 #[test]
 fn test_segmented_download() {
-    let obj = MockObject(RefCell::new(vec![]));
+    let obj = MockObject(RwLock::new(vec![]));
 
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);
@@ -109,7 +110,7 @@ fn test_segmented_download() {
         [0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
-    assert_eq!(obj.0.borrow().as_slice(), b"A long string");
+    assert_eq!(obj.0.read().unwrap().as_slice(), b"A long string");
 }
 
 #[test]
@@ -131,7 +132,7 @@ fn test_expedited_upload() {
 
 #[test]
 fn test_segmented_upload() {
-    let obj = MockObject(RefCell::new(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    let obj = MockObject(RwLock::new(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]));
 
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);

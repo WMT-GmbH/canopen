@@ -2,7 +2,7 @@ use crate::sdo::SDOAbortCode;
 use core::num::NonZeroUsize;
 use core::sync::atomic::*;
 
-pub trait DataLink {
+pub trait DataLink: Sync {
     fn size(&self) -> Option<NonZeroUsize>;
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode>;
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;
@@ -42,12 +42,37 @@ impl DataLink for AtomicBool {
     }
 }
 
+impl DataLink for bool {
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(1)
+    }
+    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+        read_stream.buf[0] = *self as u8;
+        Ok(())
+    }
+    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        Err(SDOAbortCode::ReadOnlyError)
+    }
+}
+
 impl DataLink for &str {
     fn size(&self) -> Option<NonZeroUsize> {
         NonZeroUsize::new(self.len())
     }
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-        let unread_data = self[*read_stream.total_bytes_read..].as_bytes();
+        self.as_bytes().read(read_stream)
+    }
+    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        Err(SDOAbortCode::ReadOnlyError)
+    }
+}
+
+impl DataLink for &[u8] {
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(self.len())
+    }
+    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+        let unread_data = &self[*read_stream.total_bytes_read..];
 
         let new_data_len = if unread_data.len() <= read_stream.buf.len() {
             read_stream.is_last_segment = true;
@@ -65,34 +90,6 @@ impl DataLink for &str {
         Err(SDOAbortCode::ReadOnlyError)
     }
 }
-
-macro_rules! cell_impl {
-    ($typ:ty) => {
-        impl DataLink for core::cell::Cell<$typ> {
-            fn size(&self) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
-            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-                read_stream.buf.copy_from_slice(&self.get().to_le_bytes());
-                Ok(())
-            }
-            fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                if let Ok(data) = write_stream.new_data.try_into() {
-                    self.set(<$typ>::from_le_bytes(data));
-                }
-                Ok(())
-            }
-        }
-    };
-}
-
-cell_impl!(u8);
-cell_impl!(u16);
-cell_impl!(u32);
-
-cell_impl!(i8);
-cell_impl!(i16);
-cell_impl!(i32);
 
 macro_rules! atomic_impl {
     ($typ:ty, $backing_typ:ty) => {
