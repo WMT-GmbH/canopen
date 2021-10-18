@@ -5,9 +5,10 @@ use core::sync::atomic::AtomicU8;
 
 use canopen::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
 use canopen::objectdictionary::Variable;
+use canopen::pdo::TPDO;
 use canopen::sdo::SDOAbortCode;
 use canopen::Network;
-use canopen::{LocalNode, ObjectDictionary};
+use canopen::{CanOpenNode, ObjectDictionary};
 use std::sync::RwLock;
 
 #[derive(Default)]
@@ -64,7 +65,7 @@ fn test_expedited_download() {
 
     let network = MockNetwork::default();
 
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
 
     node.on_message(&[0x22, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size not specified
     node.on_message(&[0x27, 0x02, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size specified
@@ -91,7 +92,7 @@ fn test_segmented_download() {
 
     let network = MockNetwork::default();
 
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
 
     node.on_message(&[0x21, 0x01, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00]);
     node.on_message(&[0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]);
@@ -121,7 +122,7 @@ fn test_expedited_upload() {
 
     let network = MockNetwork::default();
 
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
 
     node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     assert_eq!(
@@ -139,7 +140,7 @@ fn test_segmented_upload() {
 
     let network = MockNetwork::default();
 
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
 
     node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -168,7 +169,7 @@ fn test_segmented_upload_with_known_size() {
 
     let network = MockNetwork::default();
 
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
 
     node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -194,7 +195,7 @@ fn test_abort() {
     let objects = [Variable::new(0x0001, 0x00, &obj)];
     let od = ObjectDictionary::new(&objects);
     let network = MockNetwork::default();
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
     node.on_message(&[0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // invalid command specifier
     node.on_message(&[0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // upload invalid index
     node.on_message(&[0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]); // upload invalid subindex
@@ -218,10 +219,23 @@ fn test_bad_data() {
     let network = MockNetwork::default();
 
     let od = ObjectDictionary { objects: &[] };
-    let mut node = LocalNode::new(2, &network, &od);
+    let mut node = CanOpenNode::new(2, &network, &od);
 
     node.on_message(&[0; 7]);
     node.on_message(&[0; 9]);
     node.on_message(&[]);
     assert!(network.sent_messages.borrow().is_empty());
+}
+
+#[test]
+fn test_thread() {
+    let network = MockNetwork::default();
+
+    static OD: ObjectDictionary = ObjectDictionary { objects: &[] };
+    let mut node = CanOpenNode::new(2, &network, &OD);
+    let mut tpdo = TPDO(&OD);
+    node.on_message(&[]);
+    let t = std::thread::spawn(move || tpdo.stuff());
+    node.on_message(&[]);
+    t.join().unwrap();
 }

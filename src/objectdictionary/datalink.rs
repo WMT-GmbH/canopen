@@ -1,10 +1,11 @@
-use crate::sdo::SDOAbortCode;
 use core::num::NonZeroUsize;
 use core::sync::atomic::*;
 
+use crate::sdo::SDOAbortCode;
+
 pub trait DataLink: Sync {
     fn size(&self) -> Option<NonZeroUsize>;
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode>;
+    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode>; // TODO switch to ODError
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;
 }
 
@@ -23,6 +24,61 @@ pub struct ReadStream<'a> {
     pub total_bytes_read: &'a mut usize,
     pub is_last_segment: bool,
 }
+
+macro_rules! atomic_impl {
+    ($typ:ty, $backing_typ:ty) => {
+        impl DataLink for $typ {
+            fn size(&self) -> Option<NonZeroUsize> {
+                NonZeroUsize::new(core::mem::size_of::<$typ>())
+            }
+            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+                read_stream
+                    .buf
+                    .copy_from_slice(&self.load(Ordering::Relaxed).to_le_bytes());
+                Ok(())
+            }
+            fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+                if let Ok(data) = write_stream.new_data.try_into() {
+                    self.store(<$backing_typ>::from_le_bytes(data), Ordering::Relaxed);
+                }
+                Ok(())
+            }
+        }
+    };
+}
+
+atomic_impl!(AtomicU8, u8);
+atomic_impl!(AtomicU16, u16);
+atomic_impl!(AtomicU32, u32);
+
+atomic_impl!(AtomicI8, i8);
+atomic_impl!(AtomicI16, i16);
+atomic_impl!(AtomicI32, i32);
+
+macro_rules! readonly_impl {
+    ($typ:ty) => {
+        impl DataLink for $typ {
+            fn size(&self) -> Option<NonZeroUsize> {
+                NonZeroUsize::new(core::mem::size_of::<$typ>())
+            }
+            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+                read_stream.buf.copy_from_slice(&self.to_le_bytes());
+                Ok(())
+            }
+            fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+                Err(SDOAbortCode::ReadOnlyError)
+            }
+        }
+    };
+}
+
+readonly_impl!(u8);
+readonly_impl!(u16);
+readonly_impl!(u32);
+
+readonly_impl!(i8);
+readonly_impl!(i16);
+readonly_impl!(i32);
 
 impl DataLink for AtomicBool {
     fn size(&self) -> Option<NonZeroUsize> {
@@ -91,57 +147,18 @@ impl DataLink for &[u8] {
     }
 }
 
-macro_rules! atomic_impl {
-    ($typ:ty, $backing_typ:ty) => {
-        impl DataLink for $typ {
-            fn size(&self) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
-            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-                read_stream
-                    .buf
-                    .copy_from_slice(&self.load(Ordering::Relaxed).to_le_bytes());
-                Ok(())
-            }
-            fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                if let Ok(data) = write_stream.new_data.try_into() {
-                    self.store(<$backing_typ>::from_le_bytes(data), Ordering::Relaxed);
-                }
-                Ok(())
-            }
-        }
-    };
+/*
+impl<T: DataLink, const N: usize> DataLink for [T; N] {
+    fn size(&self) -> Option<NonZeroUsize> {
+        todo!()
+    }
+
+    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+        self[read_stream.subindex as usize].read(read_stream)
+    }
+
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        self[write_stream.subindex as usize].write(write_stream)
+    }
 }
-
-atomic_impl!(AtomicU8, u8);
-atomic_impl!(AtomicU16, u16);
-atomic_impl!(AtomicU32, u32);
-
-atomic_impl!(AtomicI8, i8);
-atomic_impl!(AtomicI16, i16);
-atomic_impl!(AtomicI32, i32);
-
-macro_rules! readonly_impl {
-    ($typ:ty) => {
-        impl DataLink for $typ {
-            fn size(&self) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
-            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-                read_stream.buf.copy_from_slice(&self.to_le_bytes());
-                Ok(())
-            }
-            fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                Err(SDOAbortCode::ReadOnlyError)
-            }
-        }
-    };
-}
-
-readonly_impl!(u8);
-readonly_impl!(u16);
-readonly_impl!(u32);
-
-readonly_impl!(i8);
-readonly_impl!(i16);
-readonly_impl!(i32);
+*/

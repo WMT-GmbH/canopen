@@ -1,9 +1,11 @@
 use core::cmp::Ordering;
+use core::marker::PhantomData;
+
+use embedded_can::StandardId;
 
 use crate::objectdictionary::datalink::{ReadStream, WriteStream};
 use crate::objectdictionary::{ObjectDictionary, Variable};
 use crate::sdo::errors::SDOAbortCode;
-use crate::Network;
 
 use super::*;
 
@@ -23,30 +25,30 @@ enum State<'a> {
     },
 }
 
-pub struct SdoServer<'a, N: Network> {
-    _rx_cobid: u32,
-    tx_cobid: u32,
-    network: &'a N,
+pub struct SdoServer<'a, F> {
+    pub rx_cobid: StandardId,
+    pub tx_cobid: StandardId,
     od: &'a ObjectDictionary<'a>,
     last_index: u16,
     last_subindex: u8,
     state: State<'a>,
+    _phantom: PhantomData<F>,
 }
 
-impl<'a, N: Network> SdoServer<'a, N> {
-    pub fn new(rx_cobid: u32, tx_cobid: u32, network: &'a N, od: &'a ObjectDictionary<'a>) -> Self {
+impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
+    pub fn new(rx_cobid: StandardId, tx_cobid: StandardId, od: &'a ObjectDictionary<'a>) -> Self {
         SdoServer {
-            _rx_cobid: rx_cobid,
+            rx_cobid,
             tx_cobid,
-            network,
             od,
             last_index: 0,
             last_subindex: 0,
             state: State::None,
+            _phantom: PhantomData,
         }
     }
 
-    pub fn on_request(&mut self, data: &[u8; 8]) {
+    pub fn on_request(&mut self, data: &[u8; 8]) -> Option<F> {
         let ccs = data[0] & 0xE0;
 
         let result = match ccs {
@@ -64,10 +66,10 @@ impl<'a, N: Network> SdoServer<'a, N> {
             _ => Err(SDOAbortCode::CommandSpecifierError),
         };
         match result {
-            Ok(None) => {}
-            Ok(Some(response)) => self.send_response(response),
-            Err(abort_code) => self.abort(abort_code),
-        };
+            Ok(None) => None,
+            Ok(Some(response)) => Some(F::new(self.tx_cobid, &response).unwrap()),
+            Err(abort_code) => Some(self.abort(abort_code)),
+        }
     }
 
     fn set_index(&mut self, request: &[u8; 8]) {
@@ -228,7 +230,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
         }
     }
 
-    fn abort(&mut self, abort_error: SDOAbortCode) {
+    fn abort(&mut self, abort_error: SDOAbortCode) -> F {
         let [index_lo, index_hi] = self.last_index.to_le_bytes();
         let subindex = self.last_subindex;
         let code: [u8; 4] = (abort_error as u32).to_le_bytes();
@@ -243,11 +245,7 @@ impl<'a, N: Network> SdoServer<'a, N> {
             code[3],
         ];
 
-        self.send_response(data);
-    }
-
-    fn send_response(&mut self, data: [u8; 8]) {
-        self.network.send_message(self.tx_cobid, data);
+        F::new(self.tx_cobid, &data).unwrap()
     }
 }
 

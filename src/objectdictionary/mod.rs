@@ -15,7 +15,7 @@ pub enum ODError {
 }
 
 impl ObjectDictionary<'_> {
-    pub fn new<'a>(objects: &'a [Variable<'_>]) -> ObjectDictionary<'a> {
+    pub const fn new<'a>(objects: &'a [Variable<'_>]) -> ObjectDictionary<'a> {
         ObjectDictionary { objects }
     }
 
@@ -24,18 +24,22 @@ impl ObjectDictionary<'_> {
             .objects
             .binary_search_by(|obj| (obj.index, obj.subindex).cmp(&(index, subindex)))
         {
-            Ok(pos) => Ok(&self.objects[pos]),
-            Err(pos) => {
+            Ok(position) => Ok(&self.objects[position]),
+            Err(position) => {
                 // If there is an object with the same index but different subindex
                 // we need to return ODError::SubindexDoesNotExist.
 
-                // Binary search will return the index at which one could insert the searched for variable
-                // If an object with the same index exists, this index with point into to or just past this object.
-                // So if the variables at pos and pos-1 do not match, such an object cannot exist.
-                if pos < self.objects.len() && self.objects[pos].index == index {
+                // Binary search will return the position at which one could insert
+                // the searched for variable.
+                // If an object with the same index exists, the returned position will point into
+                // or just past such an object.
+
+                // So if the variables at position and position - 1 do not match,
+                // such an object cannot exist.
+                if position < self.objects.len() && self.objects[position].index == index {
                     return Err(ODError::SubindexDoesNotExist);
                 }
-                if pos != 0 && self.objects[pos - 1].index == index {
+                if position != 0 && self.objects[position - 1].index == index {
                     return Err(ODError::SubindexDoesNotExist);
                 }
                 Err(ODError::IndexDoesNotExist)
