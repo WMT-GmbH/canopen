@@ -3,7 +3,7 @@ use core::sync::atomic::*;
 
 use crate::sdo::SDOAbortCode;
 
-pub trait DataLink: Sync {
+pub trait DataLink {
     fn size(&self) -> Option<NonZeroUsize>;
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode>; // TODO switch to ODError
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;

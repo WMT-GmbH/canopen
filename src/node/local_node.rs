@@ -7,7 +7,9 @@ pub struct CanOpenNode<'a, F> {
 }
 
 impl<'a, F: embedded_can::Frame> CanOpenNode<'a, F> {
-    pub fn new(node_id: u8, object_dictionary: &'a ObjectDictionary<'a>) -> Self {
+    pub fn new(node_id: u8, object_dictionary: ObjectDictionary<'a>) -> Self {
+        // TODO node_id within the range from 1 to 127
+
         // SAFETY: Maximum StandardId is 0x7FF, maximum node_id is 0xFF TODO should be 127
         let tx_cobid = unsafe { StandardId::new_unchecked(0x580 + node_id as u16) };
         let rx_cobid = unsafe { StandardId::new_unchecked(0x600 + node_id as u16) };
