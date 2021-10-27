@@ -1,26 +1,16 @@
-use core::cell::RefCell;
 use core::num::NonZeroUsize;
 use core::sync::atomic::AtomicU32;
 use core::sync::atomic::AtomicU8;
 
 use canopen::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
 use canopen::objectdictionary::Variable;
-use canopen::pdo::TPDO;
 use canopen::sdo::SDOAbortCode;
-use canopen::Network;
 use canopen::{CanOpenNode, ObjectDictionary};
+use embedded_can::Frame;
 use std::sync::RwLock;
 
-#[derive(Default)]
-pub struct MockNetwork {
-    sent_messages: RefCell<Vec<[u8; 8]>>,
-}
-
-impl Network for MockNetwork {
-    fn send_message(&self, _can_id: u32, data: [u8; 8]) {
-        self.sent_messages.borrow_mut().push(data);
-    }
-}
+mod frame;
+use frame::CanOpenFrame;
 
 struct MockObject(RwLock<Vec<u8>>);
 impl DataLink for MockObject {
@@ -55,6 +45,12 @@ impl DataLink for MockObject {
     }
 }
 
+macro_rules! on_sdo_message {
+    ($node:ident, $data:expr) => {
+        $node.on_message(&CanOpenFrame::new($node.sdo_server.rx_cobid, $data).unwrap())
+    };
+}
+
 #[test]
 fn test_expedited_download() {
     let obj_1 = MockObject(RwLock::new(vec![]));
@@ -63,19 +59,17 @@ fn test_expedited_download() {
     let objects = [Variable::new(1, 0, &obj_1), Variable::new(2, 0, &obj_2)];
     let od = ObjectDictionary::new(&objects);
 
-    let network = MockNetwork::default();
+    let mut node = CanOpenNode::new(2, od);
 
-    let mut node = CanOpenNode::new(2, &network, &od);
-
-    node.on_message(&[0x22, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size not specified
-    node.on_message(&[0x27, 0x02, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size specified
+    let response_0 = on_sdo_message!(node, &[0x22, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size not specified
+    let response_1 = on_sdo_message!(node, &[0x27, 0x02, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size specified
 
     assert_eq!(
-        network.sent_messages.borrow()[0],
+        response_0.unwrap().data(),
         [0x60, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(
-        network.sent_messages.borrow()[1],
+        response_1.unwrap().data(),
         [0x60, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
@@ -90,24 +84,22 @@ fn test_segmented_download() {
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);
 
-    let network = MockNetwork::default();
+    let mut node = CanOpenNode::new(2, od);
 
-    let mut node = CanOpenNode::new(2, &network, &od);
-
-    node.on_message(&[0x21, 0x01, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]);
-    node.on_message(&[0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]);
+    let response_0 = on_sdo_message!(node, &[0x21, 0x01, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00]);
+    let response_1 = on_sdo_message!(node, &[0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]);
+    let response_2 = on_sdo_message!(node, &[0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]);
 
     assert_eq!(
-        network.sent_messages.borrow()[0],
+        response_0.unwrap().data(),
         [0x60, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(
-        network.sent_messages.borrow()[1],
+        response_1.unwrap().data(),
         [0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(
-        network.sent_messages.borrow()[2],
+        response_2.unwrap().data(),
         [0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
@@ -120,13 +112,11 @@ fn test_expedited_upload() {
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);
 
-    let network = MockNetwork::default();
+    let mut node = CanOpenNode::new(2, od);
 
-    let mut node = CanOpenNode::new(2, &network, &od);
-
-    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_0 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     assert_eq!(
-        network.sent_messages.borrow()[0],
+        response_0.unwrap().data(),
         [0x43, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
     );
 }
@@ -138,24 +128,22 @@ fn test_segmented_upload() {
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);
 
-    let network = MockNetwork::default();
+    let mut node = CanOpenNode::new(2, od);
 
-    let mut node = CanOpenNode::new(2, &network, &od);
-
-    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_0 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_1 = on_sdo_message!(node, &[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_2 = on_sdo_message!(node, &[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 
     assert_eq!(
-        network.sent_messages.borrow()[0],
+        response_0.unwrap().data(),
         [0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(
-        network.sent_messages.borrow()[1],
+        response_1.unwrap().data(),
         [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
     );
     assert_eq!(
-        network.sent_messages.borrow()[2],
+        response_2.unwrap().data(),
         [0x1b, 0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 }
@@ -167,24 +155,22 @@ fn test_segmented_upload_with_known_size() {
     let objects = [Variable::new(1, 0, &obj)];
     let od = ObjectDictionary::new(&objects);
 
-    let network = MockNetwork::default();
+    let mut node = CanOpenNode::new(2, od);
 
-    let mut node = CanOpenNode::new(2, &network, &od);
-
-    node.on_message(&[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    node.on_message(&[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_0 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_1 = on_sdo_message!(node, &[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let response_2 = on_sdo_message!(node, &[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 
     assert_eq!(
-        network.sent_messages.borrow()[0],
+        response_0.unwrap().data(),
         [0x41, 0x01, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00]
     );
     assert_eq!(
-        network.sent_messages.borrow()[1],
+        response_1.unwrap().data(),
         [0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]
     );
     assert_eq!(
-        network.sent_messages.borrow()[2],
+        response_2.unwrap().data(),
         [0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]
     );
 }
@@ -194,48 +180,35 @@ fn test_abort() {
     let obj = AtomicU8::new(0);
     let objects = [Variable::new(0x0001, 0x00, &obj)];
     let od = ObjectDictionary::new(&objects);
-    let network = MockNetwork::default();
-    let mut node = CanOpenNode::new(2, &network, &od);
-    node.on_message(&[0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // invalid command specifier
-    node.on_message(&[0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // upload invalid index
-    node.on_message(&[0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]); // upload invalid subindex
-                                                                        // TODO TOGGLE Bit not alternated
+    let mut node = CanOpenNode::new(2, od);
+    let response_0 = on_sdo_message!(node, &[0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // invalid command specifier
+    let response_1 = on_sdo_message!(node, &[0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // upload invalid index
+    let response_2 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]); // upload invalid subindex
+                                                                                               // TODO TOGGLE Bit not alternated
     assert_eq!(
-        network.sent_messages.borrow()[0],
+        response_0.unwrap().data(),
         [0x80, 0x00, 0x00, 0x00, 0x01, 0x00, 0x04, 0x05]
     );
     assert_eq!(
-        network.sent_messages.borrow()[1],
+        response_1.unwrap().data(),
         [0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x06]
     );
     assert_eq!(
-        network.sent_messages.borrow()[2],
+        response_2.unwrap().data(),
         [0x80, 0x01, 0x00, 0x01, 0x11, 0x00, 0x09, 0x06]
     );
 }
 
-#[test]
-fn test_bad_data() {
-    let network = MockNetwork::default();
-
-    let od = ObjectDictionary { objects: &[] };
-    let mut node = CanOpenNode::new(2, &network, &od);
-
-    node.on_message(&[0; 7]);
-    node.on_message(&[0; 9]);
-    node.on_message(&[]);
-    assert!(network.sent_messages.borrow().is_empty());
-}
-
+/*
 #[test]
 fn test_thread() {
-    let network = MockNetwork::default();
 
     static OD: ObjectDictionary = ObjectDictionary { objects: &[] };
     let mut node = CanOpenNode::new(2, &network, &OD);
     let mut tpdo = TPDO(&OD);
-    node.on_message(&[]);
+    on_sdo_message!(node, &[]);
     let t = std::thread::spawn(move || tpdo.stuff());
-    node.on_message(&[]);
+    on_sdo_message!(node, &[]);
     t.join().unwrap();
 }
+*/
