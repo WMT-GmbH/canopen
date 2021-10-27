@@ -1,3 +1,4 @@
+use core::cell::Cell;
 use core::num::NonZeroUsize;
 use core::sync::atomic::*;
 
@@ -24,6 +25,34 @@ pub struct ReadStream<'a> {
     pub total_bytes_read: &'a mut usize,
     pub is_last_segment: bool,
 }
+
+macro_rules! cell_impl {
+    ($typ:ty) => {
+        impl DataLink for Cell<$typ> {
+            fn size(&self) -> Option<NonZeroUsize> {
+                NonZeroUsize::new(core::mem::size_of::<$typ>())
+            }
+            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+                read_stream.buf.copy_from_slice(&self.get().to_le_bytes());
+                Ok(())
+            }
+            fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+                if let Ok(data) = write_stream.new_data.try_into() {
+                    self.set(<$typ>::from_le_bytes(data));
+                }
+                Ok(())
+            }
+        }
+    };
+}
+
+cell_impl!(u8);
+cell_impl!(u16);
+cell_impl!(u32);
+
+cell_impl!(i8);
+cell_impl!(i16);
+cell_impl!(i32);
 
 macro_rules! atomic_impl {
     ($typ:ty, $backing_typ:ty) => {
@@ -80,6 +109,24 @@ readonly_impl!(i8);
 readonly_impl!(i16);
 readonly_impl!(i32);
 
+impl DataLink for Cell<bool> {
+    fn size(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(core::mem::size_of::<bool>())
+    }
+    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+        read_stream.buf[0] = self.get() as u8;
+        Ok(())
+    }
+    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        if write_stream.new_data[0] > 1 {
+            Err(SDOAbortCode::InvalidValue)
+        } else {
+            self.set(write_stream.new_data[0] > 0);
+            Ok(())
+        }
+    }
+}
+
 impl DataLink for AtomicBool {
     fn size(&self) -> Option<NonZeroUsize> {
         NonZeroUsize::new(1)
@@ -89,7 +136,7 @@ impl DataLink for AtomicBool {
         Ok(())
     }
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        if write_stream.new_data[0] > 0 {
+        if write_stream.new_data[0] > 1 {
             Err(SDOAbortCode::InvalidValue)
         } else {
             self.store(write_stream.new_data[0] > 0, Ordering::Relaxed);
