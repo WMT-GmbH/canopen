@@ -5,32 +5,16 @@ pub mod datalink;
 pub mod datatypes;
 pub mod variable;
 
-#[derive(Copy, Clone)]
-pub struct ObjectDictionary<'a> {
-    pub objects: &'a [Variable<'a>],
+pub type ObjectDictionary<'a> = &'a [Variable<'a>];
+
+pub trait ObjectDictionaryExt<'a> {
+    fn find(&self, index: u16, subindex: u8) -> Result<&'a Variable<'a>, ODError>;
 }
 
-pub enum ODError {
-    IndexDoesNotExist,
-    SubindexDoesNotExist,
-}
-
-impl ObjectDictionary<'_> {
-    pub const fn new<'a>(objects: &'a [Variable<'_>]) -> ObjectDictionary<'a> {
-        ObjectDictionary { objects }
-    }
-
-    pub fn get(&self, index: u16, subindex: u8) -> Result<&Variable<'_>, ODError> {
-        let position = self.get_position(index, subindex)?;
-        Ok(&self.objects[position])
-    }
-
-    pub fn get_position(&self, index: u16, subindex: u8) -> Result<usize, ODError> {
-        match self
-            .objects
-            .binary_search_by(|obj| (obj.index, obj.subindex).cmp(&(index, subindex)))
-        {
-            Ok(position) => Ok(position),
+impl<'a> ObjectDictionaryExt<'a> for ObjectDictionary<'a> {
+    fn find(&self, index: u16, subindex: u8) -> Result<&'a Variable<'a>, ODError> {
+        match self.binary_search_by(|obj| (obj.index, obj.subindex).cmp(&(index, subindex))) {
+            Ok(position) => Ok(&self[position]),
             Err(position) => {
                 // If there is an object with the same index but different subindex
                 // we need to return ODError::SubindexDoesNotExist.
@@ -42,10 +26,10 @@ impl ObjectDictionary<'_> {
 
                 // So if the variables at position and position - 1 do not match,
                 // such an object cannot exist.
-                if position < self.objects.len() && self.objects[position].index == index {
+                if position < self.len() && self[position].index == index {
                     return Err(ODError::SubindexDoesNotExist);
                 }
-                if position != 0 && self.objects[position - 1].index == index {
+                if position != 0 && self[position - 1].index == index {
                     return Err(ODError::SubindexDoesNotExist);
                 }
                 Err(ODError::IndexDoesNotExist)
@@ -54,13 +38,7 @@ impl ObjectDictionary<'_> {
     }
 }
 
-/* TODO lifetime stuff
-use core::ops::Index;
-
-impl Index<u16> for ObjectDictionary{
-    type Output = Option<&Object>;
-
-    fn index(&self, index: u16) -> Self::Output {
-        self.indices.get(&index)
-    }
-}*/
+pub enum ODError {
+    IndexDoesNotExist,
+    SubindexDoesNotExist,
+}

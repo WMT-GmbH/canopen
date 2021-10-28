@@ -5,7 +5,7 @@ use core::sync::atomic::*;
 use crate::sdo::SDOAbortCode;
 
 pub trait DataLink {
-    fn size(&self) -> Option<NonZeroUsize>;
+    fn size(&self, index: u16, subindex: u8) -> Option<NonZeroUsize>;
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode>; // TODO switch to ODError
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;
 }
@@ -29,7 +29,7 @@ pub struct ReadStream<'a> {
 macro_rules! cell_impl {
     ($typ:ty) => {
         impl DataLink for Cell<$typ> {
-            fn size(&self) -> Option<NonZeroUsize> {
+            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
                 NonZeroUsize::new(core::mem::size_of::<$typ>())
             }
             fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -57,7 +57,7 @@ cell_impl!(i32);
 macro_rules! atomic_impl {
     ($typ:ty, $backing_typ:ty) => {
         impl DataLink for $typ {
-            fn size(&self) -> Option<NonZeroUsize> {
+            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
                 NonZeroUsize::new(core::mem::size_of::<$typ>())
             }
             fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -87,7 +87,7 @@ atomic_impl!(AtomicI32, i32);
 macro_rules! readonly_impl {
     ($typ:ty) => {
         impl DataLink for $typ {
-            fn size(&self) -> Option<NonZeroUsize> {
+            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
                 NonZeroUsize::new(core::mem::size_of::<$typ>())
             }
             fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -110,7 +110,7 @@ readonly_impl!(i16);
 readonly_impl!(i32);
 
 impl DataLink for Cell<bool> {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(core::mem::size_of::<bool>())
     }
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -128,7 +128,7 @@ impl DataLink for Cell<bool> {
 }
 
 impl DataLink for AtomicBool {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(1)
     }
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -146,7 +146,7 @@ impl DataLink for AtomicBool {
 }
 
 impl DataLink for bool {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(1)
     }
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -159,7 +159,7 @@ impl DataLink for bool {
 }
 
 impl DataLink for &str {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(self.len())
     }
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -171,7 +171,7 @@ impl DataLink for &str {
 }
 
 impl DataLink for &[u8] {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(self.len())
     }
     fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
@@ -194,9 +194,25 @@ impl DataLink for &[u8] {
     }
 }
 
+pub struct ResourceNotAvailable;
+
+impl DataLink for ResourceNotAvailable {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
+        None
+    }
+
+    fn read(&self, _read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+        Err(SDOAbortCode::ResourceNotAvailable)
+    }
+
+    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+        Err(SDOAbortCode::ResourceNotAvailable)
+    }
+}
+
 /*
 impl<T: DataLink, const N: usize> DataLink for [T; N] {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         todo!()
     }
 

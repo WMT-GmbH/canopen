@@ -1,4 +1,5 @@
 #![feature(const_fn_trait_bound)]
+#![feature(const_raw_ptr_deref)]
 #![warn(rust_2018_idioms)]
 #![no_std]
 

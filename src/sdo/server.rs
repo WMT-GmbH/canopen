@@ -4,23 +4,23 @@ use core::marker::PhantomData;
 use embedded_can::StandardId;
 
 use crate::objectdictionary::datalink::{ReadStream, WriteStream};
-use crate::objectdictionary::ObjectDictionary;
+use crate::objectdictionary::{ObjectDictionary, ObjectDictionaryExt, Variable};
 use crate::sdo::errors::SDOAbortCode;
 
 use super::*;
 
 type RequestResult = Result<Option<[u8; 8]>, SDOAbortCode>;
 
-enum State {
+enum State<'a> {
     None,
     SegmentedDownload {
         toggle_bit: u8,
-        variable_od_index: usize,
+        variable: &'a Variable<'a>,
         bytes_downloaded: usize,
     },
     SegmentedUpload {
         toggle_bit: u8,
-        variable_od_index: usize,
+        variable: &'a Variable<'a>,
         bytes_uploaded: usize,
     },
 }
@@ -31,7 +31,7 @@ pub struct SdoServer<'a, F> {
     od: ObjectDictionary<'a>,
     last_index: u16,
     last_subindex: u8,
-    state: State,
+    state: State<'a>,
     _phantom: PhantomData<F>,
 }
 
@@ -78,8 +78,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
     }
 
     fn init_download(&mut self, request: &[u8; 8]) -> RequestResult {
-        let variable_od_index = self.od.get_position(self.last_index, self.last_subindex)?;
-        let variable = &self.od.objects[variable_od_index];
+        let variable = self.od.find(self.last_index, self.last_subindex)?;
 
         let command = request[0];
         if command & EXPEDITED != 0 {
@@ -87,7 +86,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
                 0 => 4,
                 _ => 4 - ((command >> 2) & 0x3) as usize,
             };
-            if let Some(expected_size) = variable.datalink.size() {
+            if let Some(expected_size) = variable.size() {
                 check_sizes(size, expected_size.get())?;
             }
 
@@ -99,10 +98,10 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
                 is_last_segment: true,
             };
 
-            variable.datalink.write(&stream)?;
+            variable.write(&stream)?;
         } else {
             if command & SIZE_SPECIFIED != 0 {
-                if let Some(expected_size) = variable.datalink.size() {
+                if let Some(expected_size) = variable.size() {
                     let size = u32::from_le_bytes(request[4..8].try_into().unwrap()) as usize;
 
                     check_sizes(size, expected_size.get())?;
@@ -112,7 +111,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
             self.state = State::SegmentedDownload {
                 toggle_bit: 0,
                 bytes_downloaded: 0,
-                variable_od_index,
+                variable,
             };
         }
 
@@ -126,7 +125,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
         match &mut self.state {
             State::SegmentedDownload {
                 toggle_bit,
-                variable_od_index,
+                variable,
                 bytes_downloaded,
             } => {
                 // unpack command
@@ -145,9 +144,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
                     offset: *bytes_downloaded,
                     is_last_segment: no_more_data,
                 };
-                self.od.objects[*variable_od_index]
-                    .datalink
-                    .write(&stream)?;
+                variable.write(&stream)?;
                 *bytes_downloaded += last_byte - 1;
 
                 // respond
@@ -159,13 +156,12 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
         }
     }
     fn init_upload(&mut self, request: &[u8; 8]) -> RequestResult {
-        let variable_od_index = self.od.get_position(self.last_index, self.last_subindex)?;
-        let variable = &self.od.objects[variable_od_index];
+        let variable = self.od.find(self.last_index, self.last_subindex)?;
 
         let mut response = [RESPONSE_UPLOAD, 0, 0, 0, 0, 0, 0, 0];
         response[1..4].copy_from_slice(&request[1..4]);
 
-        if let Some(size) = variable.datalink.size() {
+        if let Some(size) = variable.size() {
             let size = size.get();
             response[0] |= SIZE_SPECIFIED;
             if size <= 4 {
@@ -179,7 +175,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
                     total_bytes_read: &mut 0,
                     is_last_segment: false,
                 };
-                variable.datalink.read(&mut read_stream)?;
+                variable.read(&mut read_stream)?;
                 return Ok(Some(response));
             } else {
                 response[4..].copy_from_slice(&(size as u32).to_le_bytes());
@@ -189,7 +185,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
         self.state = State::SegmentedUpload {
             toggle_bit: 0,
             bytes_uploaded: 0,
-            variable_od_index,
+            variable,
         };
 
         Ok(Some(response))
@@ -200,7 +196,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
             State::SegmentedUpload {
                 toggle_bit,
                 bytes_uploaded,
-                variable_od_index,
+                variable,
             } => {
                 if command & TOGGLE_BIT != *toggle_bit {
                     return Err(SDOAbortCode::ToggleBitNotAlternated);
@@ -215,9 +211,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
                     total_bytes_read: bytes_uploaded,
                     is_last_segment: false,
                 };
-                self.od.objects[*variable_od_index]
-                    .datalink
-                    .read(&mut read_stream)?;
+                variable.read(&mut read_stream)?;
                 let size = *read_stream.total_bytes_read - bytes_uploaded_prev;
 
                 let mut res_command = RESPONSE_SEGMENT_UPLOAD;

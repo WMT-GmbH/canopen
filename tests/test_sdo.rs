@@ -14,7 +14,7 @@ use frame::CanOpenFrame;
 
 struct MockObject(RwLock<Vec<u8>>);
 impl DataLink for MockObject {
-    fn size(&self) -> Option<NonZeroUsize> {
+    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         None
     }
 
