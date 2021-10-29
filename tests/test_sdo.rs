@@ -5,7 +5,7 @@ use core::sync::atomic::AtomicU8;
 use canopen::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
 use canopen::objectdictionary::Variable;
 use canopen::sdo::SDOAbortCode;
-use canopen::{CanOpenNode, ObjectDictionary};
+use canopen::CanOpenNode;
 use embedded_can::Frame;
 use std::sync::RwLock;
 
@@ -56,10 +56,9 @@ fn test_expedited_download() {
     let obj_1 = MockObject(RwLock::new(vec![]));
     let obj_2 = MockObject(RwLock::new(vec![]));
 
-    let objects = [Variable::new(1, 0, &obj_1), Variable::new(2, 0, &obj_2)];
-    let od = ObjectDictionary::new(&objects);
+    let od = [Variable::new(1, 0, &obj_1), Variable::new(2, 0, &obj_2)];
 
-    let mut node = CanOpenNode::new(2, od);
+    let mut node = CanOpenNode::new(2, &od);
 
     let response_0 = on_sdo_message!(node, &[0x22, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size not specified
     let response_1 = on_sdo_message!(node, &[0x27, 0x02, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]); // size specified
@@ -81,10 +80,9 @@ fn test_expedited_download() {
 fn test_segmented_download() {
     let obj = MockObject(RwLock::new(vec![]));
 
-    let objects = [Variable::new(1, 0, &obj)];
-    let od = ObjectDictionary::new(&objects);
+    let od = [Variable::new(1, 0, &obj)];
 
-    let mut node = CanOpenNode::new(2, od);
+    let mut node = CanOpenNode::new(2, &od);
 
     let response_0 = on_sdo_message!(node, &[0x21, 0x01, 0x00, 0x00, 0x13, 0x00, 0x00, 0x00]);
     let response_1 = on_sdo_message!(node, &[0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]);
@@ -109,10 +107,9 @@ fn test_segmented_download() {
 #[test]
 fn test_expedited_upload() {
     let obj = AtomicU32::new(0x04030201);
-    let objects = [Variable::new(1, 0, &obj)];
-    let od = ObjectDictionary::new(&objects);
+    let od = [Variable::new(1, 0, &obj)];
 
-    let mut node = CanOpenNode::new(2, od);
+    let mut node = CanOpenNode::new(2, &od);
 
     let response_0 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     assert_eq!(
@@ -125,10 +122,9 @@ fn test_expedited_upload() {
 fn test_segmented_upload() {
     let obj = MockObject(RwLock::new(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]));
 
-    let objects = [Variable::new(1, 0, &obj)];
-    let od = ObjectDictionary::new(&objects);
+    let od = [Variable::new(1, 0, &obj)];
 
-    let mut node = CanOpenNode::new(2, od);
+    let mut node = CanOpenNode::new(2, &od);
 
     let response_0 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     let response_1 = on_sdo_message!(node, &[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -152,10 +148,9 @@ fn test_segmented_upload() {
 fn test_segmented_upload_with_known_size() {
     let obj = "A long string";
 
-    let objects = [Variable::new(1, 0, &obj)];
-    let od = ObjectDictionary::new(&objects);
+    let od = [Variable::new(1, 0, &obj)];
 
-    let mut node = CanOpenNode::new(2, od);
+    let mut node = CanOpenNode::new(2, &od);
 
     let response_0 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     let response_1 = on_sdo_message!(node, &[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -178,9 +173,9 @@ fn test_segmented_upload_with_known_size() {
 #[test]
 fn test_abort() {
     let obj = AtomicU8::new(0);
-    let objects = [Variable::new(0x0001, 0x00, &obj)];
-    let od = ObjectDictionary::new(&objects);
-    let mut node = CanOpenNode::new(2, od);
+    let od = [Variable::new(0x0001, 0x00, &obj)];
+
+    let mut node = CanOpenNode::new(2, &od);
     let response_0 = on_sdo_message!(node, &[0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // invalid command specifier
     let response_1 = on_sdo_message!(node, &[0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // upload invalid index
     let response_2 = on_sdo_message!(node, &[0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]); // upload invalid subindex
