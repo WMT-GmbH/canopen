@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
-use core::marker::PhantomData;
 
+use crate::node::NodeId;
 use embedded_can::StandardId;
 
 use crate::objectdictionary::datalink::{ReadStream, WriteStream};
@@ -25,18 +25,21 @@ enum State<'a> {
     },
 }
 
-pub struct SdoServer<'a, F> {
+pub struct SdoServer<'a> {
     pub rx_cobid: StandardId,
     pub tx_cobid: StandardId,
     od: ObjectDictionary<'a>,
     last_index: u16,
     last_subindex: u8,
     state: State<'a>,
-    _phantom: PhantomData<F>,
 }
 
-impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
-    pub fn new(rx_cobid: StandardId, tx_cobid: StandardId, od: ObjectDictionary<'a>) -> Self {
+impl<'a> SdoServer<'a> {
+    pub fn new(node_id: NodeId, od: ObjectDictionary<'a>) -> Self {
+        // SAFETY: Maximum StandardId is 0x7FF, maximum node_id is 0x7F
+        let tx_cobid = unsafe { StandardId::new_unchecked(0x580 + node_id.raw() as u16) };
+        let rx_cobid = unsafe { StandardId::new_unchecked(0x600 + node_id.raw() as u16) };
+
         SdoServer {
             rx_cobid,
             tx_cobid,
@@ -44,11 +47,10 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
             last_index: 0,
             last_subindex: 0,
             state: State::None,
-            _phantom: PhantomData,
         }
     }
 
-    pub fn on_request(&mut self, data: &[u8; 8]) -> Option<F> {
+    pub fn on_request<F: embedded_can::Frame>(&mut self, data: &[u8; 8]) -> Option<F> {
         let ccs = data[0] & 0xE0;
 
         let result = match ccs {
@@ -231,7 +233,7 @@ impl<'a, F: embedded_can::Frame> SdoServer<'a, F> {
         }
     }
 
-    fn abort(&mut self, abort_error: SDOAbortCode) -> F {
+    fn abort<F: embedded_can::Frame>(&mut self, abort_error: SDOAbortCode) -> F {
         let [index_lo, index_hi] = self.last_index.to_le_bytes();
         let subindex = self.last_subindex;
         let code: [u8; 4] = (abort_error as u32).to_le_bytes();

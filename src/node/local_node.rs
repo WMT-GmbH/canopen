@@ -1,25 +1,21 @@
+use embedded_can::Id;
+
+use crate::node::NodeId;
 use crate::objectdictionary::ObjectDictionary;
 use crate::sdo::SdoServer;
-use embedded_can::{Id, StandardId};
 
-pub struct CanOpenNode<'a, F> {
-    pub sdo_server: SdoServer<'a, F>,
+pub struct CanOpenNode<'a> {
+    pub sdo_server: SdoServer<'a>,
 }
 
-impl<'a, F: embedded_can::Frame> CanOpenNode<'a, F> {
-    pub fn new(node_id: u8, od: ObjectDictionary<'a>) -> Self {
-        // TODO node_id within the range from 1 to 127
-
-        // SAFETY: Maximum StandardId is 0x7FF, maximum node_id is 0xFF TODO should be 127
-        let tx_cobid = unsafe { StandardId::new_unchecked(0x580 + node_id as u16) };
-        let rx_cobid = unsafe { StandardId::new_unchecked(0x600 + node_id as u16) };
-
+impl<'a> CanOpenNode<'a> {
+    pub fn new(node_id: NodeId, od: ObjectDictionary<'a>) -> Self {
         CanOpenNode {
-            sdo_server: SdoServer::new(rx_cobid, tx_cobid, od),
+            sdo_server: SdoServer::new(node_id, od),
         }
     }
 
-    pub fn on_message(&mut self, frame: &F) -> Option<F> {
+    pub fn on_message<F: embedded_can::Frame>(&mut self, frame: &F) -> Option<F> {
         match frame.id() {
             Id::Standard(id) => {
                 if id == self.sdo_server.rx_cobid {

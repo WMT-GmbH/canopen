@@ -1,6 +1,7 @@
 use core::cell::Cell;
 use core::num::NonZeroUsize;
 
+use crate::node::NodeId;
 use embedded_can::{ExtendedId, Id, StandardId};
 
 use crate::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
@@ -11,37 +12,35 @@ use crate::ObjectDictionary;
 pub struct TPDO<'a> {
     pub od: ObjectDictionary<'a>,
     pub com: PDOCommunicationParameter,
-    pub map: MappedObjects<'a>,
-    pub num_mapped_objects: Cell<u8>,
-    pub buf: [u8; 8],
-    pub cob_id_update_func: fn(CobId, CobId) -> Result<CobId, ()>,
+    pub map: MappedVariables<'a>,
+    pub num_mapped_variables: Cell<u8>,
+    pub cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
 }
 
 impl<'a> TPDO<'a> {
     #[inline]
     pub fn new_default(
         tpdo: DefaultTPDO,
-        node_id: u8,
+        node_id: NodeId,
         od: ObjectDictionary<'a>,
-        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, ()>,
+        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> Self {
         let com = PDOCommunicationParameter::new(tpdo.cob_id(node_id, false, false));
-        TPDO::new(od, com, MappedObjects::default(), cob_id_update_func)
+        TPDO::new(od, com, MappedVariables::default(), cob_id_update_func)
     }
 
     #[inline]
     pub fn new(
         od: ObjectDictionary<'a>,
         com: PDOCommunicationParameter,
-        map: MappedObjects<'a>,
-        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, ()>,
+        map: MappedVariables<'a>,
+        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> Self {
         TPDO {
             od,
             com,
             map,
-            num_mapped_objects: Cell::new(0),
-            buf: [0; 8],
+            num_mapped_variables: Cell::new(0),
             cob_id_update_func,
         }
     }
@@ -80,7 +79,7 @@ impl DataLink for TPDO<'_> {
                 _ => unreachable!(),
             },
             0x1A00..=0x1BFF => match read_stream.subindex {
-                0 => self.num_mapped_objects.read(read_stream),
+                0 => self.num_mapped_variables.read(read_stream),
                 n => self.map.get_map_data_packed(n).read(read_stream),
             },
             _ => unreachable!(),
@@ -98,14 +97,13 @@ impl DataLink for TPDO<'_> {
                 1 => {
                     let new_cob_id = Cell::new(0);
                     new_cob_id.write(write_stream)?;
-                    if let Ok(cob_id) =
-                        (self.cob_id_update_func)(self.com.cob_id(), CobId::from(new_cob_id.get()))
-                    {
-                        self.com.cob_id.set(cob_id.into());
-                        Ok(())
-                    } else {
-                        Err(SDOAbortCode::InvalidValue)
-                    }
+                    let new_cob_id = (self.cob_id_update_func)(
+                        self.com.cob_id(),
+                        CobId::from(new_cob_id.get()),
+                    )?;
+
+                    self.com.cob_id.set(new_cob_id.into());
+                    Ok(())
                 }
                 2 => self.com.transmission_type.write(write_stream),
                 3 => self.com.inhibit_time.write(write_stream),
@@ -115,19 +113,23 @@ impl DataLink for TPDO<'_> {
             },
             0x1A00..=0x1BFF => {
                 if write_stream.subindex == 0 {
-                    return self.num_mapped_objects.write(write_stream);
+                    return self.num_mapped_variables.write(write_stream);
                 }
-                if self.num_mapped_objects.get() > 0 {
+                if self.num_mapped_variables.get() > 0 {
                     // num_mapped_objects needs to be set to 0 before updating mapping
                     return Err(SDOAbortCode::UnsupportedAccess);
                 }
                 if let Ok(data) = write_stream.new_data.try_into() {
                     let data = <u32>::from_le_bytes(data);
-                    let (index, subindex, size) = unpack_variable_data(data);
+                    let (index, subindex, num_bits) = unpack_variable_data(data);
 
                     match self.od.find(index, subindex) {
                         Ok(variable) => {
-                            if variable.size() != NonZeroUsize::new(size) {
+                            if let Some(size) = variable.size() {
+                                if size.get() * 8 != num_bits {
+                                    return Err(SDOAbortCode::ObjectCannotBeMapped);
+                                }
+                            } else {
                                 return Err(SDOAbortCode::ObjectCannotBeMapped);
                             }
 
@@ -155,14 +157,14 @@ pub enum DefaultTPDO {
 }
 
 impl DefaultTPDO {
-    pub fn cob_id(self, node_id: u8, valid: bool, rtr: bool) -> CobId {
-        CobId {
-            valid,
-            rtr,
-            id: Id::Standard(unsafe {
-                StandardId::new_unchecked(0x180 + 0x100 * self as u16 + node_id as u16)
-            }),
-        }
+    pub fn cob_id(self, node_id: NodeId, valid: bool, rtr: bool) -> CobId {
+        // SAFETY: Maximum StandardId is 0x7FF, maximum self is 3, maximum node_id is 0x7F
+        let id = unsafe {
+            Id::Standard(StandardId::new_unchecked(
+                0x180 + 0x100 * self as u16 + node_id.raw() as u16,
+            ))
+        };
+        CobId { valid, rtr, id }
     }
 }
 
@@ -208,6 +210,14 @@ impl From<u32> for CobId {
     }
 }
 
+pub struct InvalidCobId;
+
+impl From<InvalidCobId> for SDOAbortCode {
+    fn from(_: InvalidCobId) -> Self {
+        SDOAbortCode::InvalidValue
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum TPDOTransmissionType {
     SynchronousAcyclic,
@@ -234,8 +244,8 @@ impl TPDOTransmissionType {
 pub struct PDOCommunicationParameter {
     cob_id: Cell<u32>,
     transmission_type: Cell<u8>,
-    inhibit_time: Cell<u8>,
-    event_timer: Cell<u8>,
+    inhibit_time: Cell<u16>,
+    event_timer: Cell<u16>,
     sync_start_value: Cell<u8>,
 }
 
@@ -256,16 +266,16 @@ impl PDOCommunicationParameter {
 }
 
 #[derive(Default)]
-pub struct MappedObjects<'a>([Cell<Option<&'a Variable<'a>>>; 8]);
+pub struct MappedVariables<'a>([Cell<Option<&'a Variable<'a>>>; 8]);
 
-impl MappedObjects<'_> {
+impl MappedVariables<'_> {
     #[inline]
     fn get_map_data_packed(&self, num: u8) -> u32 {
         match self.0[num as usize - 1].get() {
             Some(variable) => pack_variable_data(
                 variable.index,
                 variable.subindex,
-                variable.size().unwrap().get(),
+                variable.size().unwrap().get() * 8,
             ),
             None => 0,
         }
@@ -273,8 +283,8 @@ impl MappedObjects<'_> {
 }
 
 #[inline]
-fn pack_variable_data(index: u16, subindex: u8, size: usize) -> u32 {
-    ((index as u32) << 16) + ((subindex as u32) << 8) + size as u32
+fn pack_variable_data(index: u16, subindex: u8, num_bits: usize) -> u32 {
+    ((index as u32) << 16) + ((subindex as u32) << 8) + num_bits as u32
 }
 
 #[inline]
@@ -306,8 +316,8 @@ impl TPDOCanId {
 
 
 /// Multiple of 100µs
-struct InhibitTime(Option<NonZeroU8>);
+struct InhibitTime(Option<NonZeroU16>);
 
 /// Multiple of 1ms
-struct EventTimer(Option<NonZeroU8>);
+struct EventTimer(Option<NonZeroU16>);
 */
