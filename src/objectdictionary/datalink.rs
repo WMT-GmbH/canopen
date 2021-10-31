@@ -1,5 +1,6 @@
 use core::cell::Cell;
 use core::num::NonZeroUsize;
+use core::ops::Deref;
 use core::sync::atomic::*;
 
 use crate::sdo::SDOAbortCode;
@@ -18,7 +19,7 @@ pub struct WriteStream<'a> {
     pub is_last_segment: bool,
 }
 
-pub struct ReadStream<'a> {
+pub struct ReadStreamData<'a> {
     pub index: u16,
     pub subindex: u8,
     pub(crate) buf: &'a mut [u8],
@@ -26,9 +27,19 @@ pub struct ReadStream<'a> {
     pub(crate) is_last_segment: bool,
 }
 
-pub struct UsedReadStream<'rs>(pub(crate) ReadStream<'rs>);
+pub struct ReadStream<'a>(pub(crate) &'a mut ReadStreamData<'a>);
+pub struct UsedReadStream<'a>(pub(crate) &'a mut ReadStreamData<'a>);
 
-impl ReadStream<'_> {
+impl<'a> Deref for ReadStream<'a> {
+    type Target = ReadStreamData<'a>;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+/*impl ReadStream<'_> {
     #[inline]
     pub fn read_u8(mut self, val: u8) {
         self.buf[0] = val;
@@ -76,7 +87,7 @@ impl ReadStream<'_> {
         self.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
         *self.total_bytes_read += new_data_len;
     }
-}
+}*/
 
 macro_rules! cell_impl {
     ($typ:ty) => {
@@ -150,11 +161,11 @@ macro_rules! readonly_impl {
                 mut read_stream: ReadStream<'rs>,
             ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
                 let size = core::mem::size_of::<$typ>();
-                read_stream.buf[0..size].copy_from_slice(&self.to_le_bytes());
-                *read_stream.total_bytes_read += size;
-                read_stream.is_last_segment = true;
+                read_stream.0.buf[0..size].copy_from_slice(&self.to_le_bytes());
+                *read_stream.0.total_bytes_read += size;
+                read_stream.0.is_last_segment = true;
 
-                Ok(UsedReadStream(read_stream))
+                Ok(UsedReadStream(read_stream.0))
             }
             fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
                 Err(SDOAbortCode::ReadOnlyError)
@@ -241,19 +252,19 @@ impl DataLink for &[u8] {
         &self,
         mut read_stream: ReadStream<'rs>,
     ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        let unread_data = &self[*read_stream.total_bytes_read..];
+        let unread_data = &self[*read_stream.0.total_bytes_read..];
 
-        let new_data_len = if unread_data.len() <= read_stream.buf.len() {
-            read_stream.is_last_segment = true;
+        let new_data_len = if unread_data.len() <= read_stream.0.buf.len() {
+            read_stream.0.is_last_segment = true;
             unread_data.len()
         } else {
-            read_stream.buf.len()
+            read_stream.0.buf.len()
         };
 
-        read_stream.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
-        *read_stream.total_bytes_read += new_data_len;
+        read_stream.0.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
+        *read_stream.0.total_bytes_read += new_data_len;
 
-        Ok(UsedReadStream(read_stream))
+        Ok(UsedReadStream(read_stream.0))
     }
     fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         Err(SDOAbortCode::ReadOnlyError)

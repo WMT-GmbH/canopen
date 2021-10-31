@@ -3,7 +3,7 @@ use core::cmp::Ordering;
 use crate::node::NodeId;
 use embedded_can::StandardId;
 
-use crate::objectdictionary::datalink::{ReadStream, WriteStream};
+use crate::objectdictionary::datalink::{ReadStream, ReadStreamData, WriteStream};
 use crate::objectdictionary::{ObjectDictionary, ObjectDictionaryExt, Variable};
 use crate::sdo::errors::SDOAbortCode;
 
@@ -170,14 +170,14 @@ impl<'a> SdoServer<'a> {
                 response[0] |= EXPEDITED;
                 response[0] |= (4 - size as u8) << 2;
 
-                let read_stream = ReadStream {
+                let mut read_stream_data = ReadStreamData {
                     index: self.last_index,
                     subindex: self.last_subindex,
                     buf: &mut response[4..4 + size],
                     total_bytes_read: &mut 0,
                     is_last_segment: false,
                 };
-                variable.read(read_stream)?;
+                variable.read(ReadStream(&mut read_stream_data))?;
                 return Ok(Some(response));
             } else {
                 response[4..].copy_from_slice(&(size as u32).to_le_bytes());
@@ -206,21 +206,21 @@ impl<'a> SdoServer<'a> {
 
                 let mut response = [0; 8];
                 let bytes_uploaded_prev = *bytes_uploaded;
-                let read_stream = ReadStream {
+                let mut read_stream_data = ReadStreamData {
                     index: self.last_index,
                     subindex: self.last_subindex,
                     buf: &mut response[1..8],
                     total_bytes_read: bytes_uploaded,
                     is_last_segment: false,
                 };
-                let read_stream = variable.read(read_stream)?.0;
-                let size = *read_stream.total_bytes_read - bytes_uploaded_prev;
+                let read_stream_data = variable.read(ReadStream(&mut read_stream_data))?.0;
+                let size = *read_stream_data.total_bytes_read - bytes_uploaded_prev;
 
                 let mut res_command = RESPONSE_SEGMENT_UPLOAD;
                 res_command |= *toggle_bit; // add toggle bit
                 res_command |= (7 - size as u8) << 1; // add number of bytes not used
 
-                if read_stream.is_last_segment {
+                if read_stream_data.is_last_segment {
                     res_command |= NO_MORE_DATA; // nothing left in buffer
                 }
 

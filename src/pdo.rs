@@ -4,7 +4,9 @@ use core::num::NonZeroUsize;
 use crate::node::NodeId;
 use embedded_can::{ExtendedId, Id, StandardId};
 
-use crate::objectdictionary::datalink::{DataLink, ReadStream, UsedReadStream, WriteStream};
+use crate::objectdictionary::datalink::{
+    DataLink, ReadStream, ReadStreamData, UsedReadStream, WriteStream,
+};
 use crate::objectdictionary::{ObjectDictionaryExt, Variable};
 use crate::sdo::SDOAbortCode;
 use crate::ObjectDictionary;
@@ -48,18 +50,19 @@ impl<'a> TPDO<'a> {
     pub fn create_frame<F: embedded_can::Frame>(&self) -> Result<F, SDOAbortCode> {
         let mut buf = [0; 8];
         let mut frame_len = 0;
-        let mut read_stream = ReadStream {
+        let mut read_stream_data = ReadStreamData {
             index: 0,
             subindex: 0,
             buf: &mut buf,
             total_bytes_read: &mut frame_len,
             is_last_segment: false,
         };
+        let mut read_stream_ref = &mut read_stream_data;
         for i in 0..self.num_mapped_variables.get() as usize {
             if let Some(variable) = self.map.0[i].get() {
-                read_stream.index = variable.index;
-                read_stream.subindex = variable.subindex;
-                read_stream = variable.read(read_stream)?.0;
+                read_stream_ref.index = variable.index;
+                read_stream_ref.subindex = variable.subindex;
+                read_stream_ref = variable.read(ReadStream(read_stream_ref))?.0;
             }
         }
 
