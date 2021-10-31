@@ -4,7 +4,7 @@ use core::num::NonZeroUsize;
 use crate::node::NodeId;
 use embedded_can::{ExtendedId, Id, StandardId};
 
-use crate::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
+use crate::objectdictionary::datalink::{DataLink, ReadStream, UsedReadStream, WriteStream};
 use crate::objectdictionary::{ObjectDictionaryExt, Variable};
 use crate::sdo::SDOAbortCode;
 use crate::ObjectDictionary;
@@ -45,6 +45,27 @@ impl<'a> TPDO<'a> {
         }
     }
 
+    pub fn create_frame<F: embedded_can::Frame>(&self) -> Result<F, SDOAbortCode> {
+        let mut buf = [0; 8];
+        let mut frame_len = 0;
+        let mut read_stream = ReadStream {
+            index: 0,
+            subindex: 0,
+            buf: &mut buf,
+            total_bytes_read: &mut frame_len,
+            is_last_segment: false,
+        };
+        for i in 0..self.num_mapped_variables.get() as usize {
+            if let Some(variable) = self.map.0[i].get() {
+                read_stream.index = variable.index;
+                read_stream.subindex = variable.subindex;
+                read_stream = variable.read(read_stream)?.0;
+            }
+        }
+
+        Ok(F::new(self.com.cob_id().id, &buf[0..frame_len]).unwrap())
+    }
+
     pub fn map_variable(&self, slot: u8, variable: &'a Variable<'a>) -> Result<(), ()> {
         // TODO check sizes
         if variable.size().is_some() {
@@ -68,7 +89,7 @@ impl DataLink for TPDO<'_> {
         }
     }
 
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
         match read_stream.index {
             0x1800..=0x19FF => match read_stream.subindex {
                 1 => self.com.cob_id.read(read_stream),

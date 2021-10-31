@@ -28,7 +28,7 @@ enum State<'a> {
 pub struct SdoServer<'a> {
     pub rx_cobid: StandardId,
     pub tx_cobid: StandardId,
-    od: ObjectDictionary<'a>,
+    pub(crate) od: ObjectDictionary<'a>,
     last_index: u16,
     last_subindex: u8,
     state: State<'a>,
@@ -170,14 +170,14 @@ impl<'a> SdoServer<'a> {
                 response[0] |= EXPEDITED;
                 response[0] |= (4 - size as u8) << 2;
 
-                let mut read_stream = ReadStream {
+                let read_stream = ReadStream {
                     index: self.last_index,
                     subindex: self.last_subindex,
                     buf: &mut response[4..4 + size],
                     total_bytes_read: &mut 0,
                     is_last_segment: false,
                 };
-                variable.read(&mut read_stream)?;
+                variable.read(read_stream)?;
                 return Ok(Some(response));
             } else {
                 response[4..].copy_from_slice(&(size as u32).to_le_bytes());
@@ -206,14 +206,14 @@ impl<'a> SdoServer<'a> {
 
                 let mut response = [0; 8];
                 let bytes_uploaded_prev = *bytes_uploaded;
-                let mut read_stream = ReadStream {
+                let read_stream = ReadStream {
                     index: self.last_index,
                     subindex: self.last_subindex,
                     buf: &mut response[1..8],
                     total_bytes_read: bytes_uploaded,
                     is_last_segment: false,
                 };
-                variable.read(&mut read_stream)?;
+                let read_stream = variable.read(read_stream)?.0;
                 let size = *read_stream.total_bytes_read - bytes_uploaded_prev;
 
                 let mut res_command = RESPONSE_SEGMENT_UPLOAD;

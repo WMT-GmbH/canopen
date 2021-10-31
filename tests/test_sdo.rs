@@ -3,7 +3,7 @@ use core::sync::atomic::AtomicU32;
 use core::sync::atomic::AtomicU8;
 
 use canopen::node::NodeId;
-use canopen::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
+use canopen::objectdictionary::datalink::{DataLink, ReadStream, UsedReadStream, WriteStream};
 use canopen::objectdictionary::Variable;
 use canopen::sdo::SDOAbortCode;
 use canopen::CanOpenNode;
@@ -19,21 +19,8 @@ impl DataLink for MockObject {
         None
     }
 
-    fn read(&self, read_stream: &mut ReadStream) -> Result<(), SDOAbortCode> {
-        let data = self.0.read().unwrap();
-        let unread_data = &data[*read_stream.total_bytes_read..];
-
-        let new_data_len = if unread_data.len() <= read_stream.buf.len() {
-            read_stream.is_last_segment = true;
-            unread_data.len()
-        } else {
-            read_stream.buf.len()
-        };
-
-        read_stream.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
-        *read_stream.total_bytes_read += new_data_len;
-
-        Ok(())
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+        self.0.read().unwrap().as_slice().read(read_stream)
     }
 
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {

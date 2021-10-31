@@ -6,7 +6,7 @@ use crate::sdo::SDOAbortCode;
 
 pub trait DataLink {
     fn size(&self, index: u16, subindex: u8) -> Option<NonZeroUsize>;
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode>; // TODO switch to ODError
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode>; // TODO switch to ODError
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;
 }
 
@@ -21,9 +21,61 @@ pub struct WriteStream<'a> {
 pub struct ReadStream<'a> {
     pub index: u16,
     pub subindex: u8,
-    pub buf: &'a mut [u8],
-    pub total_bytes_read: &'a mut usize,
-    pub is_last_segment: bool,
+    pub(crate) buf: &'a mut [u8],
+    pub(crate) total_bytes_read: &'a mut usize,
+    pub(crate) is_last_segment: bool,
+}
+
+pub struct UsedReadStream<'rs>(pub(crate) ReadStream<'rs>);
+
+impl ReadStream<'_> {
+    #[inline]
+    pub fn read_u8(mut self, val: u8) {
+        self.buf[0] = val;
+        *self.total_bytes_read += 1;
+        self.is_last_segment = true;
+    }
+    #[inline]
+    pub fn read_i8(self, val: i8) {
+        self.read_u8(val as u8)
+    }
+    #[inline]
+    pub fn read_bool(self, val: bool) {
+        self.read_u8(val as u8)
+    }
+    #[inline]
+    pub fn read_u16(mut self, val: u16) {
+        self.buf[0..2].copy_from_slice(&val.to_le_bytes());
+        *self.total_bytes_read += 2;
+        self.is_last_segment = true;
+    }
+    #[inline]
+    pub fn read_i16(self, val: i16) {
+        self.read_u16(val as u16)
+    }
+    #[inline]
+    pub fn read_u32(mut self, val: u32) {
+        self.buf[0..4].copy_from_slice(&val.to_le_bytes());
+        *self.total_bytes_read += 4;
+        self.is_last_segment = true;
+    }
+    #[inline]
+    pub fn read_i32(self, val: i32) {
+        self.read_u32(val as u32)
+    }
+    pub fn read_bytes(mut self, data: &[u8]) {
+        let unread_data = &data[*self.total_bytes_read..];
+
+        let new_data_len = if unread_data.len() <= self.buf.len() {
+            self.is_last_segment = true;
+            unread_data.len()
+        } else {
+            self.buf.len()
+        };
+
+        self.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
+        *self.total_bytes_read += new_data_len;
+    }
 }
 
 macro_rules! cell_impl {
@@ -32,9 +84,11 @@ macro_rules! cell_impl {
             fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
                 NonZeroUsize::new(core::mem::size_of::<$typ>())
             }
-            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-                read_stream.buf.copy_from_slice(&self.get().to_le_bytes());
-                Ok(())
+            fn read<'rs>(
+                &self,
+                read_stream: ReadStream<'rs>,
+            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+                self.get().read(read_stream)
             }
             fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
                 if let Ok(data) = write_stream.new_data.try_into() {
@@ -60,11 +114,11 @@ macro_rules! atomic_impl {
             fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
                 NonZeroUsize::new(core::mem::size_of::<$typ>())
             }
-            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-                read_stream
-                    .buf
-                    .copy_from_slice(&self.load(Ordering::Relaxed).to_le_bytes());
-                Ok(())
+            fn read<'rs>(
+                &self,
+                read_stream: ReadStream<'rs>,
+            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+                self.load(Ordering::Relaxed).read(read_stream)
             }
             fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
                 if let Ok(data) = write_stream.new_data.try_into() {
@@ -90,9 +144,17 @@ macro_rules! readonly_impl {
             fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
                 NonZeroUsize::new(core::mem::size_of::<$typ>())
             }
-            fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-                read_stream.buf.copy_from_slice(&self.to_le_bytes());
-                Ok(())
+            #[inline]
+            fn read<'rs>(
+                &self,
+                mut read_stream: ReadStream<'rs>,
+            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+                let size = core::mem::size_of::<$typ>();
+                read_stream.buf[0..size].copy_from_slice(&self.to_le_bytes());
+                *read_stream.total_bytes_read += size;
+                read_stream.is_last_segment = true;
+
+                Ok(UsedReadStream(read_stream))
             }
             fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
                 Err(SDOAbortCode::ReadOnlyError)
@@ -113,9 +175,9 @@ impl DataLink for Cell<bool> {
     fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(core::mem::size_of::<bool>())
     }
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-        read_stream.buf[0] = self.get() as u8;
-        Ok(())
+    #[inline]
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+        self.get().read(read_stream)
     }
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         if write_stream.new_data[0] > 1 {
@@ -131,9 +193,9 @@ impl DataLink for AtomicBool {
     fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(1)
     }
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-        read_stream.buf[0] = self.load(Ordering::Relaxed) as u8;
-        Ok(())
+    #[inline]
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+        self.load(Ordering::Relaxed).read(read_stream)
     }
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         if write_stream.new_data[0] > 1 {
@@ -149,9 +211,9 @@ impl DataLink for bool {
     fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(1)
     }
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
-        read_stream.buf[0] = *self as u8;
-        Ok(())
+    #[inline]
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+        (*self as u8).read(read_stream)
     }
     fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         Err(SDOAbortCode::ReadOnlyError)
@@ -162,7 +224,8 @@ impl DataLink for &str {
     fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(self.len())
     }
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+    #[inline]
+    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
         self.as_bytes().read(read_stream)
     }
     fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
@@ -174,7 +237,10 @@ impl DataLink for &[u8] {
     fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
         NonZeroUsize::new(self.len())
     }
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+    fn read<'rs>(
+        &self,
+        mut read_stream: ReadStream<'rs>,
+    ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
         let unread_data = &self[*read_stream.total_bytes_read..];
 
         let new_data_len = if unread_data.len() <= read_stream.buf.len() {
@@ -187,7 +253,7 @@ impl DataLink for &[u8] {
         read_stream.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
         *read_stream.total_bytes_read += new_data_len;
 
-        Ok(())
+        Ok(UsedReadStream(read_stream))
     }
     fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         Err(SDOAbortCode::ReadOnlyError)
@@ -201,7 +267,10 @@ impl DataLink for ResourceNotAvailable {
         None
     }
 
-    fn read(&self, _read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+    fn read<'rs>(
+        &self,
+        mut _read_stream: ReadStream<'rs>,
+    ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
         Err(SDOAbortCode::ResourceNotAvailable)
     }
 
@@ -216,7 +285,7 @@ impl<T: DataLink, const N: usize> DataLink for [T; N] {
         todo!()
     }
 
-    fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+    fn read(&self, mut read_stream: ReadStream<'_>) -> ResuUsedReadStream<(), SDOAbortCode> {
         self[read_stream.subindex as usize].read(read_stream)
     }
 

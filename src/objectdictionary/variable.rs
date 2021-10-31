@@ -1,7 +1,7 @@
 use core::cell::Cell;
 use core::num::NonZeroUsize;
 
-use crate::objectdictionary::datalink::{DataLink, ReadStream, WriteStream};
+use crate::objectdictionary::datalink::{DataLink, ReadStream, UsedReadStream, WriteStream};
 use crate::sdo::SDOAbortCode;
 
 pub struct Variable<'a> {
@@ -25,7 +25,10 @@ impl<'a> Variable<'a> {
     }
 
     #[inline]
-    pub fn read(&self, read_stream: &mut ReadStream<'_>) -> Result<(), SDOAbortCode> {
+    pub fn read<'rs>(
+        &self,
+        read_stream: ReadStream<'rs>,
+    ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
         self.datalink.get().read(read_stream)
     }
 
