@@ -39,55 +39,38 @@ impl<'a> Deref for ReadStream<'a> {
     }
 }
 
-/*impl ReadStream<'_> {
-    #[inline]
-    pub fn read_u8(mut self, val: u8) {
-        self.buf[0] = val;
-        *self.total_bytes_read += 1;
-        self.is_last_segment = true;
-    }
-    #[inline]
-    pub fn read_i8(self, val: i8) {
-        self.read_u8(val as u8)
-    }
-    #[inline]
-    pub fn read_bool(self, val: bool) {
-        self.read_u8(val as u8)
-    }
-    #[inline]
-    pub fn read_u16(mut self, val: u16) {
-        self.buf[0..2].copy_from_slice(&val.to_le_bytes());
-        *self.total_bytes_read += 2;
-        self.is_last_segment = true;
-    }
-    #[inline]
-    pub fn read_i16(self, val: i16) {
-        self.read_u16(val as u16)
-    }
-    #[inline]
-    pub fn read_u32(mut self, val: u32) {
-        self.buf[0..4].copy_from_slice(&val.to_le_bytes());
-        *self.total_bytes_read += 4;
-        self.is_last_segment = true;
-    }
-    #[inline]
-    pub fn read_i32(self, val: i32) {
-        self.read_u32(val as u32)
-    }
-    pub fn read_bytes(mut self, data: &[u8]) {
-        let unread_data = &data[*self.total_bytes_read..];
+macro_rules! readonly_impl {
+    ($typ:ty) => {
+        impl DataLink for $typ {
+            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
+                NonZeroUsize::new(core::mem::size_of::<$typ>())
+            }
+            #[inline]
+            fn read<'rs>(
+                &self,
+                mut read_stream: ReadStream<'rs>,
+            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
+                let size = core::mem::size_of::<$typ>();
+                read_stream.0.buf[0..size].copy_from_slice(&self.to_le_bytes());
+                *read_stream.0.total_bytes_read += size;
+                read_stream.0.is_last_segment = true;
 
-        let new_data_len = if unread_data.len() <= self.buf.len() {
-            self.is_last_segment = true;
-            unread_data.len()
-        } else {
-            self.buf.len()
-        };
+                Ok(UsedReadStream(read_stream.0))
+            }
+            fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+                Err(SDOAbortCode::ReadOnlyError)
+            }
+        }
+    };
+}
 
-        self.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
-        *self.total_bytes_read += new_data_len;
-    }
-}*/
+readonly_impl!(u8);
+readonly_impl!(u16);
+readonly_impl!(u32);
+
+readonly_impl!(i8);
+readonly_impl!(i16);
+readonly_impl!(i32);
 
 macro_rules! cell_impl {
     ($typ:ty) => {
@@ -148,39 +131,6 @@ atomic_impl!(AtomicU32, u32);
 atomic_impl!(AtomicI8, i8);
 atomic_impl!(AtomicI16, i16);
 atomic_impl!(AtomicI32, i32);
-
-macro_rules! readonly_impl {
-    ($typ:ty) => {
-        impl DataLink for $typ {
-            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
-            #[inline]
-            fn read<'rs>(
-                &self,
-                mut read_stream: ReadStream<'rs>,
-            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-                let size = core::mem::size_of::<$typ>();
-                read_stream.0.buf[0..size].copy_from_slice(&self.to_le_bytes());
-                *read_stream.0.total_bytes_read += size;
-                read_stream.0.is_last_segment = true;
-
-                Ok(UsedReadStream(read_stream.0))
-            }
-            fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                Err(SDOAbortCode::ReadOnlyError)
-            }
-        }
-    };
-}
-
-readonly_impl!(u8);
-readonly_impl!(u16);
-readonly_impl!(u32);
-
-readonly_impl!(i8);
-readonly_impl!(i16);
-readonly_impl!(i32);
 
 impl DataLink for Cell<bool> {
     fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {

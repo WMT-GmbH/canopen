@@ -1,5 +1,5 @@
 use core::cell::Cell;
-use core::num::NonZeroUsize;
+use core::num::{NonZeroU16, NonZeroUsize};
 
 use crate::node::NodeId;
 use embedded_can::{ExtendedId, Id, StandardId};
@@ -85,6 +85,7 @@ impl DataLink for TPDO<'_> {
         match index {
             0x1800..=0x19FF => match subindex {
                 1 => NonZeroUsize::new(4),
+                3 | 5 => NonZeroUsize::new(2),
                 _ => NonZeroUsize::new(1),
             },
             0x1A00..=0x1BFF => NonZeroUsize::new(4),
@@ -113,7 +114,7 @@ impl DataLink for TPDO<'_> {
     fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
         // if currently valid, the only allowed write is to the valid bit
         if self.com.cob_id().valid && (write_stream.index > 0x2000 || write_stream.subindex != 1) {
-            return Err(SDOAbortCode::UnsupportedAccess);
+            return Err(SDOAbortCode::DeviceStateError);
         }
 
         match write_stream.index {
@@ -141,7 +142,7 @@ impl DataLink for TPDO<'_> {
                 }
                 if self.num_mapped_variables.get() > 0 {
                     // num_mapped_objects needs to be set to 0 before updating mapping
-                    return Err(SDOAbortCode::UnsupportedAccess);
+                    return Err(SDOAbortCode::DeviceStateError);
                 }
                 if let Ok(data) = write_stream.new_data.try_into() {
                     let data = <u32>::from_le_bytes(data);
@@ -287,6 +288,10 @@ impl PDOCommunicationParameter {
     pub fn cob_id(&self) -> CobId {
         self.cob_id.get().into()
     }
+
+    pub fn inhibit_time(&self) -> InhibitTime {
+        self.inhibit_time.get().into()
+    }
 }
 
 #[derive(Default)]
@@ -316,6 +321,21 @@ fn unpack_variable_data(val: u32) -> (u16, u8, usize) {
     ((val >> 16) as u16, (val >> 8) as u8, val as usize & 0xFF)
 }
 
+/// Multiple of 100µs
+pub struct InhibitTime(pub Option<NonZeroU16>);
+
+impl InhibitTime {
+    pub fn us(&self) -> Option<u32> {
+        self.0.map(|val| 100 * val.get() as u32)
+    }
+}
+
+impl From<u16> for InhibitTime {
+    fn from(val: u16) -> Self {
+        InhibitTime(NonZeroU16::new(val))
+    }
+}
+
 /*
 struct TPDOCanId(Id);
 
@@ -339,8 +359,6 @@ impl TPDOCanId {
 }
 
 
-/// Multiple of 100µs
-struct InhibitTime(Option<NonZeroU16>);
 
 /// Multiple of 1ms
 struct EventTimer(Option<NonZeroU16>);
