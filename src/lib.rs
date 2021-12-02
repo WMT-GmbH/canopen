@@ -6,6 +6,7 @@
 pub use node::CanOpenNode;
 pub use objectdictionary::{datatypes, ObjectDictionary};
 
+pub mod lss;
 pub mod node;
 pub mod objectdictionary;
 pub mod pdo;
