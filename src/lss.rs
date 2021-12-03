@@ -166,6 +166,7 @@ impl<'a> LSS<'a> {
     fn set_node_id(&mut self, node_id: u8) -> RequestResult {
         if let Some(node_id) = NodeId::new(node_id) {
             self.node_id = node_id;
+            self.callback.on_new_node_id(node_id);
             Some([CONFIGURE_NODE_ID, LSS_OK, 0, 0, 0, 0, 0, 0])
         } else {
             Some([CONFIGURE_NODE_ID, LSS_GENERIC_ERROR, 0, 0, 0, 0, 0, 0])
@@ -337,6 +338,7 @@ impl<'a> LSS<'a> {
 
 pub trait LssCallback {
     fn store_configuration(&mut self, node_id: NodeId) -> Result<(), StoreConfigurationError>;
+    fn on_new_node_id(&mut self, node_id: NodeId);
 }
 
 pub enum StoreConfigurationError {
