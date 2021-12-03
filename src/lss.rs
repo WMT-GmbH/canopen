@@ -35,14 +35,17 @@ const INQUIRE_NODE_ID: u8 = 0x5E;
 
 const LSS_OK: u8 = 0x00;
 const LSS_GENERIC_ERROR: u8 = 0x01;
+const LSS_STORE_FAILED: u8 = 0x02;
+
+pub static STANDARD_BAUDRATE_TABLE: &[u16] = &[1000, 800, 500, 250, 125, 100, 50, 20, 10];
 
 pub struct LSS<'a> {
     node_id: NodeId,
-    baudrate_table: &'a [BaudrateTable<'a>],
     lss_address: [u32; 4],
     mode: LssMode,
     partial_command_state: PartialCommandState,
     expected_lss_sub: u8, // used in fast_scan
+    callback: &'a mut dyn LssCallback,
 }
 
 impl<'a> LSS<'a> {
@@ -55,19 +58,19 @@ impl<'a> LSS<'a> {
 
     pub fn new(
         node_id: NodeId,
-        baudrate_table: &'a [BaudrateTable<'a>],
         vendor_id: u32,
         product_code: u32,
         revision_number: u32,
         serial_number: u32,
+        callback: &'a mut dyn LssCallback,
     ) -> Self {
         LSS {
             node_id,
-            baudrate_table,
             lss_address: [vendor_id, product_code, revision_number, serial_number],
             mode: LssMode::Wait,
             partial_command_state: PartialCommandState::Init,
             expected_lss_sub: 0,
+            callback,
         }
     }
 
@@ -170,7 +173,12 @@ impl<'a> LSS<'a> {
     }
 
     fn store_configuration(&mut self) -> RequestResult {
-        todo!() // Some([CONFIGURE_NODE_ID, LSS_OK, 0, 0, 0, 0, 0, 0])
+        let status = match self.callback.store_configuration(self.node_id) {
+            Ok(()) => LSS_OK,
+            Err(StoreConfigurationError::NotSupported) => LSS_GENERIC_ERROR,
+            Err(StoreConfigurationError::Failed) => LSS_STORE_FAILED,
+        };
+        Some([STORE_CONFIGURATION, status, 0, 0, 0, 0, 0, 0])
     }
 
     fn set_bit_timing(&mut self, request: &[u8; 8]) -> RequestResult {
@@ -178,20 +186,11 @@ impl<'a> LSS<'a> {
         //  After execution of the Configure Bit
         //  Timing Parameters service the node may not execute any remote LSS services except the services Configure Bit
         //  Timing Parameters, Activate Bit Timing Parameters and Switch Mode.
-        let command_specifier = request[0];
-        let table_selector = request[1];
-        let table_index = request[2];
+        let _command_specifier = request[0];
+        let _table_selector = request[1];
+        let _table_index = request[2];
 
-        if let Some(&_baudrate) = self
-            .baudrate_table
-            .get(table_selector as usize)
-            .map(|table| table.get(table_index as usize))
-            .flatten()
-        {
-            todo!() // Some([command_specifier, LSS_OK, 0, 0, 0, 0, 0, 0])
-        } else {
-            Some([command_specifier, LSS_GENERIC_ERROR, 0, 0, 0, 0, 0, 0])
-        }
+        todo!() // Some([command_specifier, LSS_OK, 0, 0, 0, 0, 0, 0])
     }
 
     fn inquire(&self, command_specifier: u8) -> RequestResult {
@@ -336,6 +335,15 @@ impl<'a> LSS<'a> {
     }
 }
 
+pub trait LssCallback {
+    fn store_configuration(&mut self, node_id: NodeId) -> Result<(), StoreConfigurationError>;
+}
+
+pub enum StoreConfigurationError {
+    NotSupported,
+    Failed,
+}
+
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum LssMode {
     Configuration,
@@ -354,8 +362,3 @@ enum PartialCommandState {
     SwitchProductCodeMatched,
     SwitchRevisionNumberCodeMatched,
 }
-
-type BaudrateTable<'a> = &'a [u16];
-
-pub static STANDARD_BAUDRATE_TABLE: BaudrateTable<'static> =
-    &[1000, 800, 500, 250, 125, 100, 50, 20, 10];
