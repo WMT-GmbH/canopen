@@ -46,6 +46,9 @@ pub struct LSS<'a> {
 }
 
 impl<'a> LSS<'a> {
+    pub const LSS_REQUEST_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E5) };
+    pub const LSS_RESPONSE_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E4) };
+
     /// According to CiA 301 `0` shall indicate an invalid vendor-ID.
     /// Other values must be registered with CiA.
     pub const INVALID_VENDOR_ID: u8 = 0;
@@ -95,7 +98,7 @@ impl<'a> LSS<'a> {
                 // Switch state selective service
                 return self
                     .switch_selective(request)
-                    .map(|response| F::new(LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap());
             }
             IDENTIFY_VENDOR_ID
             | IDENTIFY_PRODUCT_CODE
@@ -106,12 +109,12 @@ impl<'a> LSS<'a> {
                 // LSS identify remote slave service
                 return self
                     .identify(request)
-                    .map(|response| F::new(LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap());
             }
             FAST_SCAN => {
                 return self
                     .fast_scan(request)
-                    .map(|response| F::new(LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap());
             }
             _ => {
                 self.partial_command_state = PartialCommandState::Init;
@@ -154,7 +157,7 @@ impl<'a> LSS<'a> {
             _ => None,
         };
 
-        result.map(|response| F::new(LSS_RESPONSE_ID, &response).unwrap())
+        result.map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap())
     }
 
     fn set_node_id(&mut self, node_id: u8) -> RequestResult {
@@ -316,12 +319,12 @@ impl<'a> LSS<'a> {
             // TODO check if we want to participate
             self.expected_lss_sub = 0;
             return Some([IDENTIFY_RESPONSE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-        } else if lss_sub == self.expected_lss_sub && lss_sub < 4 {
+        } else if lss_sub == self.expected_lss_sub && lss_sub < 4 && bit_checked < 32 {
             let bit_mask = u32::MAX << bit_checked;
 
             if (self.lss_address[lss_sub as usize] ^ id_number) & bit_mask == 0 {
                 // Checked bits match
-                self.expected_lss_sub = lss_next;
+                self.expected_lss_sub = lss_next; // only update lss_next if we're still matching
                 if lss_sub == 3 && bit_checked == 0 {
                     // Complete match, scan completed
                     self.mode = LssMode::Configuration;
@@ -356,6 +359,3 @@ type BaudrateTable<'a> = &'a [u16];
 
 pub static STANDARD_BAUDRATE_TABLE: BaudrateTable<'static> =
     &[1000, 800, 500, 250, 125, 100, 50, 20, 10];
-
-pub const LSS_REQUEST_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E5) };
-const LSS_RESPONSE_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E4) };

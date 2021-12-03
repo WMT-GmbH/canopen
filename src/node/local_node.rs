@@ -1,5 +1,6 @@
 use embedded_can::Id;
 
+use crate::lss::LSS;
 use crate::node::NodeId;
 use crate::objectdictionary::ObjectDictionary;
 use crate::pdo::{
@@ -9,13 +10,15 @@ use crate::sdo::SdoServer;
 
 pub struct CanOpenNode<'a> {
     pub sdo_server: SdoServer<'a>,
+    pub lss_slave: LSS<'a>,
     node_id: NodeId,
 }
 
 impl<'a> CanOpenNode<'a> {
-    pub fn new(node_id: NodeId, od: ObjectDictionary<'a>) -> Self {
+    pub fn new(node_id: NodeId, od: ObjectDictionary<'a>, lss_slave: LSS<'a>) -> Self {
         CanOpenNode {
             sdo_server: SdoServer::new(node_id, od),
+            lss_slave,
             node_id,
         }
     }
@@ -23,10 +26,13 @@ impl<'a> CanOpenNode<'a> {
     pub fn on_message<F: embedded_can::Frame>(&mut self, frame: &F) -> Option<F> {
         match frame.id() {
             Id::Standard(id) => {
-                if id == self.sdo_server.rx_cobid {
-                    if let Ok(data) = frame.data().try_into() {
-                        // ignore messages with wrong length
+                // ignore messages with wrong length
+                if let Ok(data) = frame.data().try_into() {
+                    if id == self.sdo_server.rx_cobid {
                         return self.sdo_server.on_request(data);
+                    }
+                    if id == LSS::LSS_REQUEST_ID {
+                        return self.lss_slave.on_request(data);
                     }
                 }
             }
