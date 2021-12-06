@@ -1,6 +1,7 @@
 use embedded_can::Id;
 
-use crate::lss::LSS;
+use crate::lss::Lss;
+use crate::nmt::Nmt;
 use crate::node::NodeId;
 use crate::objectdictionary::ObjectDictionary;
 use crate::pdo::{
@@ -10,16 +11,16 @@ use crate::sdo::SdoServer;
 
 pub struct CanOpenNode<'a> {
     pub sdo_server: SdoServer<'a>,
-    pub lss_slave: LSS<'a>,
-    node_id: NodeId,
+    pub lss_slave: Lss<'a>,
+    pub nmt_slave: Nmt<'a>,
 }
 
 impl<'a> CanOpenNode<'a> {
-    pub fn new(node_id: NodeId, od: ObjectDictionary<'a>, lss_slave: LSS<'a>) -> Self {
+    pub fn new(node_id: NodeId, od: ObjectDictionary<'a>, lss_slave: Lss<'a>) -> Self {
         CanOpenNode {
             sdo_server: SdoServer::new(node_id, od),
             lss_slave,
-            node_id,
+            nmt_slave: Nmt::default(),
         }
     }
 
@@ -27,11 +28,22 @@ impl<'a> CanOpenNode<'a> {
         match frame.id() {
             Id::Standard(id) => {
                 // ignore messages with wrong length
-                if let Ok(data) = frame.data().try_into() {
-                    if id == self.sdo_server.rx_cobid {
+
+                if id == Nmt::NMT_REQUEST_ID {
+                    match frame.data() {
+                        &[command_code, node_id]
+                            if node_id == 0 || node_id == self.lss_slave.node_id.raw() =>
+                        {
+                            return self.nmt_slave.on_request(command_code);
+                        }
+                        _ => {}
+                    }
+                } else if id == self.sdo_server.rx_cobid {
+                    if let Ok(data) = frame.data().try_into() {
                         return self.sdo_server.on_request(data);
                     }
-                    if id == LSS::LSS_REQUEST_ID {
+                } else if id == Lss::LSS_REQUEST_ID {
+                    if let Ok(data) = frame.data().try_into() {
                         return self.lss_slave.on_request(data);
                     }
                 }
@@ -45,8 +57,11 @@ impl<'a> CanOpenNode<'a> {
         &self,
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> TPDO<'a> {
-        let com =
-            PDOCommunicationParameter::new(DefaultTPDO::TPDO1.cob_id(self.node_id, false, false));
+        let com = PDOCommunicationParameter::new(DefaultTPDO::TPDO1.cob_id(
+            self.lss_slave.node_id,
+            false,
+            false,
+        ));
         TPDO::new(
             self.sdo_server.od,
             com,
@@ -59,8 +74,11 @@ impl<'a> CanOpenNode<'a> {
         &self,
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> TPDO<'a> {
-        let com =
-            PDOCommunicationParameter::new(DefaultTPDO::TPDO2.cob_id(self.node_id, false, false));
+        let com = PDOCommunicationParameter::new(DefaultTPDO::TPDO2.cob_id(
+            self.lss_slave.node_id,
+            false,
+            false,
+        ));
         TPDO::new(
             self.sdo_server.od,
             com,
@@ -73,8 +91,11 @@ impl<'a> CanOpenNode<'a> {
         &self,
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> TPDO<'a> {
-        let com =
-            PDOCommunicationParameter::new(DefaultTPDO::TPDO3.cob_id(self.node_id, false, false));
+        let com = PDOCommunicationParameter::new(DefaultTPDO::TPDO3.cob_id(
+            self.lss_slave.node_id,
+            false,
+            false,
+        ));
         TPDO::new(
             self.sdo_server.od,
             com,
@@ -87,8 +108,11 @@ impl<'a> CanOpenNode<'a> {
         &self,
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> TPDO<'a> {
-        let com =
-            PDOCommunicationParameter::new(DefaultTPDO::TPDO4.cob_id(self.node_id, false, false));
+        let com = PDOCommunicationParameter::new(DefaultTPDO::TPDO4.cob_id(
+            self.lss_slave.node_id,
+            false,
+            false,
+        ));
         TPDO::new(
             self.sdo_server.od,
             com,

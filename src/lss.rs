@@ -39,16 +39,17 @@ const LSS_STORE_FAILED: u8 = 0x02;
 
 pub static STANDARD_BAUDRATE_TABLE: &[u16] = &[1000, 800, 500, 250, 125, 100, 50, 20, 10];
 
-pub struct LSS<'a> {
-    node_id: NodeId,
+pub struct Lss<'a> {
+    pub node_id: NodeId,
     lss_address: [u32; 4],
     mode: LssMode,
     partial_command_state: PartialCommandState,
     expected_lss_sub: u8, // used in fast_scan
+    node_id_changed: bool,
     callback: &'a mut dyn LssCallback,
 }
 
-impl<'a> LSS<'a> {
+impl<'a> Lss<'a> {
     pub const LSS_REQUEST_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E5) };
     pub const LSS_RESPONSE_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E4) };
 
@@ -64,12 +65,13 @@ impl<'a> LSS<'a> {
         serial_number: u32,
         callback: &'a mut dyn LssCallback,
     ) -> Self {
-        LSS {
+        Lss {
             node_id,
             lss_address: [vendor_id, product_code, revision_number, serial_number],
             mode: LssMode::Wait,
             partial_command_state: PartialCommandState::Init,
             expected_lss_sub: 0,
+            node_id_changed: false,
             callback,
         }
     }
@@ -85,6 +87,12 @@ impl<'a> LSS<'a> {
                 match request[1] {
                     0x00 => {
                         self.mode = LssMode::Wait;
+                        if self.node_id_changed {
+                            self.callback.on_new_node_id(self.node_id);
+                        }
+                        self.node_id_changed = false;
+                        // TODO maybe restart?
+                        //  https://github.com/CANopenNode/CANopenNode/blob/master/305/CO_LSSslave.c#L67-L77
                     }
                     0x01 => {
                         self.mode = LssMode::Configuration;
@@ -101,7 +109,7 @@ impl<'a> LSS<'a> {
                 // Switch state selective service
                 return self
                     .switch_selective(request)
-                    .map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap());
             }
             IDENTIFY_VENDOR_ID
             | IDENTIFY_PRODUCT_CODE
@@ -112,12 +120,12 @@ impl<'a> LSS<'a> {
                 // LSS identify remote slave service
                 return self
                     .identify(request)
-                    .map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap());
             }
             FAST_SCAN => {
                 return self
                     .fast_scan(request)
-                    .map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap());
             }
             _ => {
                 self.partial_command_state = PartialCommandState::Init;
@@ -160,13 +168,13 @@ impl<'a> LSS<'a> {
             _ => None,
         };
 
-        result.map(|response| F::new(LSS::LSS_RESPONSE_ID, &response).unwrap())
+        result.map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap())
     }
 
     fn set_node_id(&mut self, node_id: u8) -> RequestResult {
         if let Some(node_id) = NodeId::new(node_id) {
+            self.node_id_changed = self.node_id != node_id;
             self.node_id = node_id;
-            self.callback.on_new_node_id(node_id);
             Some([CONFIGURE_NODE_ID, LSS_OK, 0, 0, 0, 0, 0, 0])
         } else {
             Some([CONFIGURE_NODE_ID, LSS_GENERIC_ERROR, 0, 0, 0, 0, 0, 0])
