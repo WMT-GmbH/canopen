@@ -1,7 +1,7 @@
 use core::cmp::Ordering;
 
-use crate::node::NodeId;
-use embedded_can::StandardId;
+use crate::{CanOpenService, NodeId};
+use embedded_can::{Id, StandardId};
 
 use crate::objectdictionary::datalink::{ReadStream, ReadStreamData, WriteStream};
 use crate::objectdictionary::{ObjectDictionary, ObjectDictionaryExt, Variable};
@@ -257,5 +257,18 @@ fn check_sizes(given: usize, expected: usize) -> Result<(), SDOAbortCode> {
         Ordering::Less => Err(SDOAbortCode::TooShort),
         Ordering::Greater => Err(SDOAbortCode::TooLong),
         Ordering::Equal => Ok(()),
+    }
+}
+
+impl<F: embedded_can::Frame> CanOpenService<F> for SdoServer<'_> {
+    fn on_message(&mut self, frame: &F) -> Option<F> {
+        if frame.id() != Id::Standard(self.rx_cobid) {
+            return None;
+        }
+        if let Ok(data) = frame.data().try_into() {
+            self.on_request(data)
+        } else {
+            None
+        }
     }
 }

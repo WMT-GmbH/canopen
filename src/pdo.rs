@@ -1,7 +1,7 @@
 use core::cell::Cell;
 use core::num::{NonZeroU16, NonZeroUsize};
 
-use crate::node::NodeId;
+use crate::NodeId;
 use embedded_can::{ExtendedId, Id, StandardId};
 
 use crate::objectdictionary::datalink::{
@@ -20,17 +20,6 @@ pub struct TPDO<'a> {
 }
 
 impl<'a> TPDO<'a> {
-    #[inline]
-    pub fn new_default(
-        tpdo: DefaultTPDO,
-        node_id: NodeId,
-        od: ObjectDictionary<'a>,
-        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
-    ) -> Self {
-        let com = PDOCommunicationParameter::new(tpdo.cob_id(node_id, false, false));
-        TPDO::new(od, com, MappedVariables::default(), cob_id_update_func)
-    }
-
     #[inline]
     pub fn new(
         od: ObjectDictionary<'a>,
@@ -182,6 +171,17 @@ pub enum DefaultTPDO {
 }
 
 impl DefaultTPDO {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(
+        self,
+        node_id: NodeId,
+        od: ObjectDictionary<'_>,
+        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
+    ) -> TPDO<'_> {
+        let com = PDOCommunicationParameter::new(self.cob_id(node_id, false, false));
+        TPDO::new(od, com, MappedVariables::default(), cob_id_update_func)
+    }
+
     pub fn cob_id(self, node_id: NodeId, valid: bool, rtr: bool) -> CobId {
         // SAFETY: Maximum StandardId is 0x7FF, maximum self is 3, maximum node_id is 0x7F
         let id = unsafe {

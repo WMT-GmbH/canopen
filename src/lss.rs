@@ -1,5 +1,6 @@
-use crate::node::NodeId;
-use embedded_can::StandardId;
+use crate::CanOpenService;
+use crate::NodeId;
+use embedded_can::{Id, StandardId};
 
 type RequestResult = Option<[u8; 8]>;
 
@@ -46,7 +47,7 @@ pub struct Lss<'a> {
     partial_command_state: PartialCommandState,
     expected_lss_sub: u8, // used in fast_scan
     node_id_changed: bool,
-    callback: &'a mut dyn LssCallback,
+    callback: Option<&'a mut dyn LssCallback>,
 }
 
 impl<'a> Lss<'a> {
@@ -63,7 +64,6 @@ impl<'a> Lss<'a> {
         product_code: u32,
         revision_number: u32,
         serial_number: u32,
-        callback: &'a mut dyn LssCallback,
     ) -> Self {
         Lss {
             node_id,
@@ -72,8 +72,12 @@ impl<'a> Lss<'a> {
             partial_command_state: PartialCommandState::Init,
             expected_lss_sub: 0,
             node_id_changed: false,
-            callback,
+            callback: None,
         }
+    }
+
+    pub fn add_callback(&mut self, callback: &'a mut dyn LssCallback) {
+        self.callback = Some(callback);
     }
 
     pub fn on_request<F: embedded_can::Frame>(&mut self, request: &[u8; 8]) -> Option<F> {
@@ -87,8 +91,10 @@ impl<'a> Lss<'a> {
                 match request[1] {
                     0x00 => {
                         self.mode = LssMode::Wait;
-                        if self.node_id_changed {
-                            self.callback.on_new_node_id(self.node_id);
+                        if let Some(callback) = self.callback.as_mut() {
+                            if self.node_id_changed {
+                                callback.on_new_node_id(self.node_id);
+                            }
                         }
                         self.node_id_changed = false;
                         // TODO maybe restart?
@@ -182,11 +188,16 @@ impl<'a> Lss<'a> {
     }
 
     fn store_configuration(&mut self) -> RequestResult {
-        let status = match self.callback.store_configuration(self.node_id) {
-            Ok(()) => LSS_OK,
-            Err(StoreConfigurationError::NotSupported) => LSS_GENERIC_ERROR,
-            Err(StoreConfigurationError::Failed) => LSS_STORE_FAILED,
+        let status = if let Some(callback) = self.callback.as_mut() {
+            match callback.store_configuration(self.node_id) {
+                Ok(()) => LSS_OK,
+                Err(StoreConfigurationError::NotSupported) => LSS_GENERIC_ERROR,
+                Err(StoreConfigurationError::Failed) => LSS_STORE_FAILED,
+            }
+        } else {
+            LSS_GENERIC_ERROR
         };
+
         Some([STORE_CONFIGURATION, status, 0, 0, 0, 0, 0, 0])
     }
 
@@ -371,4 +382,17 @@ enum PartialCommandState {
     SwitchVendorIdMatched,
     SwitchProductCodeMatched,
     SwitchRevisionNumberCodeMatched,
+}
+
+impl<F: embedded_can::Frame> CanOpenService<F> for Lss<'_> {
+    fn on_message(&mut self, frame: &F) -> Option<F> {
+        if frame.id() != Id::Standard(Lss::LSS_REQUEST_ID) {
+            return None;
+        }
+        if let Ok(data) = frame.data().try_into() {
+            self.on_request(data)
+        } else {
+            None
+        }
+    }
 }
