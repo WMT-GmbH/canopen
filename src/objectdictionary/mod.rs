@@ -1,8 +1,9 @@
-pub use datatypes::CANOpenDataType;
-pub use variable::Variable;
+pub use variable::{CANOpenData, Variable};
+
+use crate::sdo::SDOAbortCode;
 
 pub mod datalink;
-pub mod datatypes;
+pub mod odcell;
 pub mod variable;
 
 pub type ObjectDictionary<'a> = &'a [Variable<'a>];
@@ -32,13 +33,38 @@ impl<'a> ObjectDictionaryExt<'a> for ObjectDictionary<'a> {
                 if position != 0 && self[position - 1].index == index {
                     return Err(ODError::SubindexDoesNotExist);
                 }
-                Err(ODError::IndexDoesNotExist)
+                Err(ODError::ObjectDoesNotExist)
             }
         }
     }
 }
 
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
 pub enum ODError {
-    IndexDoesNotExist,
-    SubindexDoesNotExist,
+    ObjectDoesNotExist = SDOAbortCode::ObjectDoesNotExist as u32,
+    OutOfMemory = SDOAbortCode::OutOfMemory as u32,
+    UnsupportedAccess = SDOAbortCode::UnsupportedAccess as u32,
+    WriteOnlyError = SDOAbortCode::WriteOnlyError as u32,
+    ReadOnlyError = SDOAbortCode::ReadOnlyError as u32,
+    ObjectCannotBeMapped = SDOAbortCode::ObjectCannotBeMapped as u32,
+    PDOOverflow = SDOAbortCode::PDOOverflow as u32,
+    ParameterIncompatibility = SDOAbortCode::ParameterIncompatibility as u32,
+    InternalIncompatibility = SDOAbortCode::InternalIncompatibility as u32,
+    HardwareError = SDOAbortCode::HardwareError as u32,
+    WrongLength = SDOAbortCode::WrongLength as u32,
+    TooLong = SDOAbortCode::TooLong as u32,
+    TooShort = SDOAbortCode::TooShort as u32,
+    SubindexDoesNotExist = SDOAbortCode::SubindexDoesNotExist as u32,
+    InvalidValue = SDOAbortCode::InvalidValue as u32,
+    ValueTooHigh = SDOAbortCode::ValueTooHigh as u32,
+    ValueTooLow = SDOAbortCode::ValueTooLow as u32,
+    MaxLessThanMin = SDOAbortCode::MaxLessThanMin as u32,
+    ResourceNotAvailable = SDOAbortCode::ResourceNotAvailable as u32,
+    GeneralError = SDOAbortCode::GeneralError as u32,
+    TransferOrStorageError = SDOAbortCode::TransferOrStorageError as u32,
+    LocalControlError = SDOAbortCode::LocalControlError as u32,
+    DeviceStateError = SDOAbortCode::DeviceStateError as u32,
+    DictionaryError = SDOAbortCode::DictionaryError as u32,
+    NoDataAvailable = SDOAbortCode::NoDataAvailable as u32,
 }

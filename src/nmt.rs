@@ -1,5 +1,6 @@
-use crate::{CanOpenService, NodeId};
 use embedded_can::{Id, StandardId};
+
+use crate::{CanOpenService, NodeId};
 
 pub struct Nmt<'a> {
     node_id: NodeId,

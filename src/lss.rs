@@ -1,6 +1,7 @@
+use embedded_can::{Id, StandardId};
+
 use crate::CanOpenService;
 use crate::NodeId;
-use embedded_can::{Id, StandardId};
 
 type RequestResult = Option<[u8; 8]>;
 

@@ -1,13 +1,15 @@
 #![feature(const_fn_trait_bound)]
-#![feature(const_raw_ptr_deref)]
+#![feature(coerce_unsized, unsize)] // ODCell unsizing
 #![warn(rust_2018_idioms)]
 #![no_std]
+
+use embedded_can::Id;
+
+pub use objectdictionary::ObjectDictionary;
 
 use crate::lss::Lss;
 use crate::nmt::Nmt;
 use crate::sdo::SdoServer;
-use embedded_can::Id;
-pub use objectdictionary::{datatypes, ObjectDictionary};
 
 pub mod lss;
 pub mod nmt;

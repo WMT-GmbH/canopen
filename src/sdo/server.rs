@@ -1,11 +1,9 @@
-use core::cmp::Ordering;
-
-use crate::{CanOpenService, NodeId};
 use embedded_can::{Id, StandardId};
 
-use crate::objectdictionary::datalink::{ReadStream, ReadStreamData, WriteStream};
-use crate::objectdictionary::{ObjectDictionary, ObjectDictionaryExt, Variable};
+use crate::objectdictionary::datalink::{WriteData, WriteStream};
+use crate::objectdictionary::{CANOpenData, ObjectDictionary, ObjectDictionaryExt, Variable};
 use crate::sdo::errors::SDOAbortCode;
+use crate::{CanOpenService, NodeId};
 
 use super::*;
 
@@ -32,6 +30,19 @@ pub struct SdoServer<'a> {
     last_index: u16,
     last_subindex: u8,
     state: State<'a>,
+}
+
+impl<F: embedded_can::Frame> CanOpenService<F> for SdoServer<'_> {
+    fn on_message(&mut self, frame: &F) -> Option<F> {
+        if frame.id() != Id::Standard(self.rx_cobid) {
+            return None;
+        }
+        if let Ok(data) = frame.data().try_into() {
+            self.on_request(data)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a> SdoServer<'a> {
@@ -82,34 +93,30 @@ impl<'a> SdoServer<'a> {
     fn init_download(&mut self, request: &[u8; 8]) -> RequestResult {
         let variable = self.od.find(self.last_index, self.last_subindex)?;
 
-        let command = request[0];
-        if command & EXPEDITED != 0 {
-            let size = match command & SIZE_SPECIFIED {
-                0 => 4,
-                _ => 4 - ((command >> 2) & 0x3) as usize,
-            };
-            if let Some(expected_size) = variable.size() {
-                check_sizes(size, expected_size.get())?;
-            }
+        // unpack command
+        let mut stream = unpack_init_download_request(request);
+        stream.index = self.last_index;
+        stream.subindex = self.last_subindex;
 
-            let stream = WriteStream {
-                index: self.last_index,
-                subindex: self.last_subindex,
-                new_data: &request[4..4 + size],
-                offset: 0,
-                is_last_segment: true,
-            };
-
-            variable.write(&stream)?;
-        } else {
-            if command & SIZE_SPECIFIED != 0 {
-                if let Some(expected_size) = variable.size() {
-                    let size = u32::from_le_bytes(request[4..8].try_into().unwrap()) as usize;
-
-                    check_sizes(size, expected_size.get())?;
+        // write data
+        match variable.data {
+            CANOpenData::B1(_)
+            | CANOpenData::B2(_)
+            | CANOpenData::B4(_)
+            | CANOpenData::Bytes(_) => return Err(SDOAbortCode::ReadOnlyError),
+            CANOpenData::ResourceNotAvailable => return Err(SDOAbortCode::ResourceNotAvailable),
+            CANOpenData::DataLinkRef(link) => link.write(WriteStream(&stream))?,
+            CANOpenData::DataLinkCell(link) => {
+                let mut link_ref = link.borrow_mut();
+                link_ref.write(WriteStream(&stream))?;
+                if !stream.is_last_segment {
+                    link_ref.lock();
                 }
             }
+        }
 
+        // update state
+        if !stream.is_last_segment {
             self.state = State::SegmentedDownload {
                 toggle_bit: 0,
                 bytes_downloaded: 0,
@@ -117,6 +124,7 @@ impl<'a> SdoServer<'a> {
             };
         }
 
+        // respond
         let mut response = [RESPONSE_DOWNLOAD, 0, 0, 0, 0, 0, 0, 0];
         response[1..4].copy_from_slice(&request[1..4]);
 
@@ -138,20 +146,41 @@ impl<'a> SdoServer<'a> {
                 let last_byte = (8 - ((command >> 1) & 0x7)) as usize;
                 let no_more_data = command & NO_MORE_DATA != 0;
 
-                // write data
-                let stream = WriteStream {
+                let stream = WriteData {
                     index: self.last_index,
                     subindex: self.last_subindex,
+                    promised_size: None,
                     new_data: &request[1..last_byte],
                     offset: *bytes_downloaded,
                     is_last_segment: no_more_data,
                 };
-                variable.write(&stream)?;
-                *bytes_downloaded += last_byte - 1;
+
+                // write data
+                match variable.data {
+                    CANOpenData::B1(_)
+                    | CANOpenData::B2(_)
+                    | CANOpenData::B4(_)
+                    | CANOpenData::Bytes(_) => return Err(SDOAbortCode::ReadOnlyError),
+                    CANOpenData::ResourceNotAvailable => {
+                        return Err(SDOAbortCode::ResourceNotAvailable)
+                    }
+                    CANOpenData::DataLinkRef(link) => link.write(WriteStream(&stream))?,
+                    CANOpenData::DataLinkCell(link) => {
+                        if !link.is_locked() {
+                            return Err(SDOAbortCode::LocalControlError);
+                        }
+                        let mut link_ref = link.borrow_mut(); // will automatically unlock
+                        link_ref.write(WriteStream(&stream))?;
+                        if !no_more_data {
+                            link_ref.lock();
+                        }
+                    }
+                }
 
                 // respond
                 let response = [RESPONSE_SEGMENT_DOWNLOAD | *toggle_bit, 0, 0, 0, 0, 0, 0, 0];
                 *toggle_bit ^= TOGGLE_BIT;
+                *bytes_downloaded += last_byte - 1;
                 Ok(Some(response))
             }
             _ => Err(SDOAbortCode::CommandSpecifierError),
@@ -160,35 +189,36 @@ impl<'a> SdoServer<'a> {
     fn init_upload(&mut self, request: &[u8; 8]) -> RequestResult {
         let variable = self.od.find(self.last_index, self.last_subindex)?;
 
-        let mut response = [RESPONSE_UPLOAD, 0, 0, 0, 0, 0, 0, 0];
+        let mut response = [RESPONSE_UPLOAD | SIZE_SPECIFIED, 0, 0, 0, 0, 0, 0, 0];
         response[1..4].copy_from_slice(&request[1..4]);
 
-        if let Some(size) = variable.size() {
-            let size = size.get();
-            response[0] |= SIZE_SPECIFIED;
-            if size <= 4 {
-                response[0] |= EXPEDITED;
-                response[0] |= (4 - size as u8) << 2;
-
-                let mut read_stream_data = ReadStreamData {
-                    index: self.last_index,
-                    subindex: self.last_subindex,
-                    buf: &mut response[4..4 + size],
-                    total_bytes_read: &mut 0,
-                    is_last_segment: false,
-                };
-                variable.read(ReadStream(&mut read_stream_data))?;
-                return Ok(Some(response));
-            } else {
-                response[4..].copy_from_slice(&(size as u32).to_le_bytes());
+        let is_expedited = match variable.data {
+            CANOpenData::B1(data) => fill_upload_response(&data, &mut response),
+            CANOpenData::B2(data) => fill_upload_response(&data, &mut response),
+            CANOpenData::B4(data) => fill_upload_response(&data, &mut response),
+            CANOpenData::Bytes(data) => fill_upload_response(data, &mut response),
+            CANOpenData::DataLinkRef(link) => fill_upload_response(
+                link.read(self.last_index, self.last_subindex)?.get(),
+                &mut response,
+            ),
+            CANOpenData::DataLinkCell(link) => {
+                let link_ref = link.borrow();
+                let data = link_ref.read(self.last_index, self.last_subindex)?;
+                let is_expedited = fill_upload_response(data.get(), &mut response);
+                if !is_expedited {
+                    link_ref.lock();
+                }
+                is_expedited
             }
-        }
-
-        self.state = State::SegmentedUpload {
-            toggle_bit: 0,
-            bytes_uploaded: 0,
-            variable,
+            CANOpenData::ResourceNotAvailable => return Err(SDOAbortCode::ResourceNotAvailable),
         };
+        if !is_expedited {
+            self.state = State::SegmentedUpload {
+                toggle_bit: 0,
+                bytes_uploaded: 0,
+                variable,
+            };
+        }
 
         Ok(Some(response))
     }
@@ -204,29 +234,41 @@ impl<'a> SdoServer<'a> {
                     return Err(SDOAbortCode::ToggleBitNotAlternated);
                 }
 
-                let mut response = [0; 8];
-                let bytes_uploaded_prev = *bytes_uploaded;
-                let mut read_stream_data = ReadStreamData {
-                    index: self.last_index,
-                    subindex: self.last_subindex,
-                    buf: &mut response[1..8],
-                    total_bytes_read: bytes_uploaded,
-                    is_last_segment: false,
-                };
-                let read_stream_data = variable.read(ReadStream(&mut read_stream_data))?.0;
-                let size = *read_stream_data.total_bytes_read - bytes_uploaded_prev;
-
-                let mut res_command = RESPONSE_SEGMENT_UPLOAD;
-                res_command |= *toggle_bit; // add toggle bit
-                res_command |= (7 - size as u8) << 1; // add number of bytes not used
-
-                if read_stream_data.is_last_segment {
-                    res_command |= NO_MORE_DATA; // nothing left in buffer
-                }
-
+                let mut response = [RESPONSE_SEGMENT_UPLOAD | *toggle_bit, 0, 0, 0, 0, 0, 0, 0];
                 *toggle_bit ^= TOGGLE_BIT;
 
-                response[0] = res_command;
+                match variable.data {
+                    CANOpenData::Bytes(data) => {
+                        fill_segmented_upload_response(data, &mut response, bytes_uploaded);
+                    }
+                    CANOpenData::DataLinkRef(link) => {
+                        fill_segmented_upload_response(
+                            link.read(self.last_index, self.last_subindex)?.get(),
+                            &mut response,
+                            bytes_uploaded,
+                        );
+                    }
+                    CANOpenData::DataLinkCell(link) => {
+                        if !link.is_locked() {
+                            return Err(SDOAbortCode::LocalControlError);
+                        }
+                        let link_ref = link.borrow();
+
+                        let no_more_data = fill_segmented_upload_response(
+                            link_ref.read(self.last_index, self.last_subindex)?.get(),
+                            &mut response,
+                            bytes_uploaded,
+                        );
+                        if no_more_data {
+                            link_ref.unlock();
+                        }
+                    }
+                    CANOpenData::B1(_)
+                    | CANOpenData::B2(_)
+                    | CANOpenData::B4(_)
+                    | CANOpenData::ResourceNotAvailable => unreachable!(), // other datatypes always use expedited transfer
+                }
+
                 Ok(Some(response))
             }
             _ => Err(SDOAbortCode::CommandSpecifierError),
@@ -252,23 +294,59 @@ impl<'a> SdoServer<'a> {
     }
 }
 
-fn check_sizes(given: usize, expected: usize) -> Result<(), SDOAbortCode> {
-    match given.cmp(&expected) {
-        Ordering::Less => Err(SDOAbortCode::TooShort),
-        Ordering::Greater => Err(SDOAbortCode::TooLong),
-        Ordering::Equal => Ok(()),
+fn unpack_init_download_request(request: &[u8; 8]) -> WriteData<'_> {
+    let mut stream = WriteData {
+        index: 0,
+        subindex: 0,
+        promised_size: None,
+        new_data: &[],
+        offset: 0,
+        is_last_segment: false,
+    };
+
+    let command = request[0];
+
+    if command & EXPEDITED != 0 {
+        let size = match command & SIZE_SPECIFIED {
+            0 => 4,
+            _ => 4 - ((command >> 2) & 0x3) as usize,
+        };
+        stream.new_data = &request[4..4 + size];
+        stream.promised_size = Some(size);
+        stream.is_last_segment = true;
+    } else if command & SIZE_SPECIFIED != 0 {
+        stream.promised_size = Some(u32::from_le_bytes(request[4..8].try_into().unwrap()) as usize);
+    }
+
+    stream
+}
+fn fill_upload_response(data: &[u8], response: &mut [u8]) -> bool {
+    if data.len() <= 4 {
+        response[0] |= SIZE_SPECIFIED | EXPEDITED | (4 - data.len() as u8) << 2;
+        response[4..4 + data.len()].copy_from_slice(data);
+        true
+    } else {
+        response[4..].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        false
     }
 }
+fn fill_segmented_upload_response(
+    data: &[u8],
+    response: &mut [u8],
+    bytes_uploaded: &mut usize,
+) -> bool {
+    let unread_data = &data[*bytes_uploaded..];
 
-impl<F: embedded_can::Frame> CanOpenService<F> for SdoServer<'_> {
-    fn on_message(&mut self, frame: &F) -> Option<F> {
-        if frame.id() != Id::Standard(self.rx_cobid) {
-            return None;
-        }
-        if let Ok(data) = frame.data().try_into() {
-            self.on_request(data)
-        } else {
-            None
-        }
+    let size = unread_data.len().min(7);
+
+    response[1..size + 1].copy_from_slice(&unread_data[..size]);
+    *bytes_uploaded += size;
+
+    response[0] |= (7 - size as u8) << 1; // add number of bytes not used
+    if unread_data.len() <= 7 {
+        response[0] |= NO_MORE_DATA; // nothing left in buffer
+        true
+    } else {
+        false
     }
 }

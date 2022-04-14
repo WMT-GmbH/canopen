@@ -121,9 +121,33 @@ impl fmt::Display for SDOAbortCode {
 
 impl From<ODError> for SDOAbortCode {
     fn from(e: ODError) -> Self {
+        // should optimize to a no-op
         match e {
-            ODError::IndexDoesNotExist => SDOAbortCode::ObjectDoesNotExist,
+            ODError::ObjectDoesNotExist => SDOAbortCode::ObjectDoesNotExist,
+            ODError::OutOfMemory => SDOAbortCode::OutOfMemory,
+            ODError::UnsupportedAccess => SDOAbortCode::UnsupportedAccess,
+            ODError::WriteOnlyError => SDOAbortCode::WriteOnlyError,
+            ODError::ReadOnlyError => SDOAbortCode::ReadOnlyError,
+            ODError::ObjectCannotBeMapped => SDOAbortCode::ObjectCannotBeMapped,
+            ODError::PDOOverflow => SDOAbortCode::PDOOverflow,
+            ODError::ParameterIncompatibility => SDOAbortCode::ParameterIncompatibility,
+            ODError::InternalIncompatibility => SDOAbortCode::InternalIncompatibility,
+            ODError::HardwareError => SDOAbortCode::HardwareError,
+            ODError::WrongLength => SDOAbortCode::WrongLength,
+            ODError::TooLong => SDOAbortCode::TooLong,
+            ODError::TooShort => SDOAbortCode::TooShort,
             ODError::SubindexDoesNotExist => SDOAbortCode::SubindexDoesNotExist,
+            ODError::InvalidValue => SDOAbortCode::InvalidValue,
+            ODError::ValueTooHigh => SDOAbortCode::ValueTooHigh,
+            ODError::ValueTooLow => SDOAbortCode::ValueTooLow,
+            ODError::MaxLessThanMin => SDOAbortCode::MaxLessThanMin,
+            ODError::ResourceNotAvailable => SDOAbortCode::ResourceNotAvailable,
+            ODError::GeneralError => SDOAbortCode::GeneralError,
+            ODError::TransferOrStorageError => SDOAbortCode::TransferOrStorageError,
+            ODError::LocalControlError => SDOAbortCode::LocalControlError,
+            ODError::DeviceStateError => SDOAbortCode::DeviceStateError,
+            ODError::DictionaryError => SDOAbortCode::DictionaryError,
+            ODError::NoDataAvailable => SDOAbortCode::NoDataAvailable,
         }
     }
 }

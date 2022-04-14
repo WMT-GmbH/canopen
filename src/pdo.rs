@@ -1,163 +1,148 @@
 use core::cell::Cell;
-use core::num::{NonZeroU16, NonZeroUsize};
+use core::num::{NonZeroU16, NonZeroU8};
 
-use crate::NodeId;
 use embedded_can::{ExtendedId, Id, StandardId};
 
-use crate::objectdictionary::datalink::{
-    DataLink, ReadStream, ReadStreamData, UsedReadStream, WriteStream,
-};
-use crate::objectdictionary::{ObjectDictionaryExt, Variable};
+use crate::objectdictionary::datalink::{AtomicDataLink, ReadData, WriteStream};
+use crate::objectdictionary::{CANOpenData, ODError, ObjectDictionaryExt, Variable};
 use crate::sdo::SDOAbortCode;
+use crate::NodeId;
 use crate::ObjectDictionary;
 
 pub struct TPDO<'a> {
-    pub od: ObjectDictionary<'a>,
+    od: Cell<ObjectDictionary<'a>>,
     pub com: PDOCommunicationParameter,
-    pub map: MappedVariables<'a>,
-    pub num_mapped_variables: Cell<u8>,
-    pub cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
+    pub map: TPDOMappingParameters<'a>,
 }
 
 impl<'a> TPDO<'a> {
     #[inline]
-    pub fn new(
-        od: ObjectDictionary<'a>,
-        com: PDOCommunicationParameter,
-        map: MappedVariables<'a>,
-        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
-    ) -> Self {
+    pub fn new(com: PDOCommunicationParameter, map: TPDOMappingParameters<'a>) -> Self {
         TPDO {
-            od,
+            od: Cell::new(&[]),
             com,
             map,
-            num_mapped_variables: Cell::new(0),
-            cob_id_update_func,
         }
+    }
+    #[inline]
+    pub fn set_od(&self, od: ObjectDictionary<'a>) {
+        self.od.set(od);
     }
 
     pub fn create_frame<F: embedded_can::Frame>(&self) -> Result<F, SDOAbortCode> {
         let mut buf = [0; 8];
         let mut frame_len = 0;
-        let mut read_stream_data = ReadStreamData {
-            index: 0,
-            subindex: 0,
-            buf: &mut buf,
-            total_bytes_read: &mut frame_len,
-            is_last_segment: false,
-        };
-        let mut read_stream_ref = &mut read_stream_data;
-        for i in 0..self.num_mapped_variables.get() as usize {
-            if let Some(variable) = self.map.0[i].get() {
-                read_stream_ref.index = variable.index;
-                read_stream_ref.subindex = variable.subindex;
-                read_stream_ref = variable.read(ReadStream(read_stream_ref))?.0;
+        for i in 0..self.map.num_mapped_variables.get() as usize {
+            if let Some(Variable {
+                index,
+                subindex,
+                data: CANOpenData::DataLinkRef(link),
+                ..
+            }) = self.map.map[i].get()
+            {
+                let data = link.read(*index, *subindex)?;
+                let bytes = data.get();
+                buf[frame_len..frame_len + bytes.len()].copy_from_slice(bytes);
+                frame_len += bytes.len();
             }
         }
 
         Ok(F::new(self.com.cob_id().id, &buf[0..frame_len]).unwrap())
     }
 
-    pub fn map_variable(&self, slot: u8, variable: &'a Variable<'a>) -> Result<(), ()> {
-        // TODO check sizes
-        if variable.size().is_some() {
-            self.map.0[slot as usize].set(Some(variable));
-            Ok(())
-        } else {
-            Err(())
-        }
+    /// index 0x1800h to 0x19FF
+    pub fn cob_id_variable(&self, index: u16) -> Variable<'_> {
+        Variable::new_datalink_ref(index, 1, self, None)
+    }
+    /// index 0x1800h to 0x19FF
+    pub fn transmission_type_variable(&self, index: u16) -> Variable<'_> {
+        Variable::new_datalink_ref(index, 2, self, None)
+    }
+    /// index 0x1800h to 0x19FF
+    pub fn inhibit_time_variable(&self, index: u16) -> Variable<'_> {
+        Variable::new_datalink_ref(index, 3, self, None)
+    }
+    /// index 0x1800h to 0x19FF
+    pub fn event_timer_variable(&self, index: u16) -> Variable<'_> {
+        Variable::new_datalink_ref(index, 5, self, None)
+    }
+    /// index 0x1800h to 0x19FF
+    pub fn sync_start_value_variable(&self, index: u16) -> Variable<'_> {
+        Variable::new_datalink_ref(index, 6, self, None)
     }
 }
 
-impl DataLink for TPDO<'_> {
-    fn size(&self, index: u16, subindex: u8) -> Option<NonZeroUsize> {
+impl AtomicDataLink for TPDO<'_> {
+    fn read(&self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
         match index {
             0x1800..=0x19FF => match subindex {
-                1 => NonZeroUsize::new(4),
-                3 | 5 => NonZeroUsize::new(2),
-                _ => NonZeroUsize::new(1),
-            },
-            0x1A00..=0x1BFF => NonZeroUsize::new(4),
-            _ => unreachable!(),
-        }
-    }
-
-    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        match read_stream.index {
-            0x1800..=0x19FF => match read_stream.subindex {
-                1 => self.com.cob_id.read(read_stream),
-                2 => self.com.transmission_type.read(read_stream),
-                3 => self.com.inhibit_time.read(read_stream),
-                5 => self.com.event_timer.read(read_stream),
-                6 => self.com.sync_start_value.read(read_stream),
+                1 => Ok(self.com.cob_id.get().into()),
+                2 => Ok(self.com.transmission_type.get().into()),
+                3 => Ok(self.com.inhibit_time.get().into()),
+                5 => Ok(self.com.event_timer.get().into()),
+                6 => Ok(self.com.sync_start_value.get().into()),
                 _ => unreachable!(),
             },
-            0x1A00..=0x1BFF => match read_stream.subindex {
-                0 => self.num_mapped_variables.read(read_stream),
-                n => self.map.get_map_data_packed(n).read(read_stream),
+            0x1A00..=0x1BFF => match subindex {
+                0 => Ok(self.map.num_mapped_variables.get().into()),
+                n => Ok(self.map.get_map_data_packed(n).into()),
             },
             _ => unreachable!(),
         }
     }
 
-    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
+    fn write(&self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
         // if currently valid, the only allowed write is to the valid bit
-        if self.com.cob_id().valid && (write_stream.index > 0x2000 || write_stream.subindex != 1) {
-            return Err(SDOAbortCode::DeviceStateError);
+        if self.com.cob_id().valid && (write_stream.index > 0x19FF || write_stream.subindex != 1) {
+            return Err(ODError::DeviceStateError);
         }
 
         match write_stream.index {
             0x1800..=0x19FF => match write_stream.subindex {
                 1 => {
-                    let new_cob_id = Cell::new(0);
-                    new_cob_id.write(write_stream)?;
-                    let new_cob_id = (self.cob_id_update_func)(
-                        self.com.cob_id(),
-                        CobId::from(new_cob_id.get()),
-                    )?;
+                    let new_cob_id = u32::try_from(write_stream)?;
+                    let new_cob_id =
+                        (self.com.cob_id_update_func)(self.com.cob_id(), CobId::from(new_cob_id))?;
 
                     self.com.cob_id.set(new_cob_id.into());
-                    Ok(())
                 }
-                2 => self.com.transmission_type.write(write_stream),
-                3 => self.com.inhibit_time.write(write_stream),
-                5 => self.com.event_timer.write(write_stream),
-                6 => self.com.sync_start_value.write(write_stream),
+                2 => self.com.transmission_type.set(write_stream.try_into()?),
+                3 => self.com.inhibit_time.set(write_stream.try_into()?),
+                5 => self.com.event_timer.set(write_stream.try_into()?),
+                6 => self.com.sync_start_value.set(write_stream.try_into()?),
                 _ => unreachable!(),
             },
             0x1A00..=0x1BFF => {
                 if write_stream.subindex == 0 {
-                    return self.num_mapped_variables.write(write_stream);
+                    self.map.num_mapped_variables.set(write_stream.try_into()?);
+                    return Ok(());
                 }
-                if self.num_mapped_variables.get() > 0 {
+                if self.map.num_mapped_variables.get() > 0 {
                     // num_mapped_objects needs to be set to 0 before updating mapping
-                    return Err(SDOAbortCode::DeviceStateError);
+                    return Err(ODError::DeviceStateError);
                 }
                 if let Ok(data) = write_stream.new_data.try_into() {
                     let data = <u32>::from_le_bytes(data);
                     let (index, subindex, num_bits) = unpack_variable_data(data);
 
-                    match self.od.find(index, subindex) {
+                    return match self.od.get().find(index, subindex) {
                         Ok(variable) => {
-                            if let Some(size) = variable.size() {
-                                if size.get() * 8 != num_bits {
-                                    return Err(SDOAbortCode::ObjectCannotBeMapped);
-                                }
-                            } else {
-                                return Err(SDOAbortCode::ObjectCannotBeMapped);
+                            // validate num_bits
+                            if num_bits % 8 != 0
+                                || NonZeroU8::new(num_bits / 8) != variable.pdo_size
+                            {
+                                return Err(ODError::ObjectCannotBeMapped);
                             }
 
-                            self.map_variable(write_stream.subindex, variable).unwrap(); // TODO unwrap
-                            self.map.0[write_stream.subindex as usize - 1].set(Some(variable));
+                            self.map.map_variable(write_stream.subindex, variable)
                         }
-                        Err(_) => return Err(SDOAbortCode::ObjectDoesNotExist),
-                    }
+                        Err(_) => return Err(ODError::ObjectDoesNotExist),
+                    };
                 }
-
-                Ok(())
             }
             _ => unreachable!(),
         }
+        Ok(())
     }
 }
 
@@ -172,14 +157,15 @@ pub enum DefaultTPDO {
 
 impl DefaultTPDO {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(
+    pub fn new<'a>(
         self,
         node_id: NodeId,
-        od: ObjectDictionary<'_>,
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
-    ) -> TPDO<'_> {
-        let com = PDOCommunicationParameter::new(self.cob_id(node_id, false, false));
-        TPDO::new(od, com, MappedVariables::default(), cob_id_update_func)
+    ) -> TPDO<'a> {
+        TPDO::new(
+            PDOCommunicationParameter::new(self.cob_id(node_id, false, false), cob_id_update_func),
+            TPDOMappingParameters::default(),
+        )
     }
 
     pub fn cob_id(self, node_id: NodeId, valid: bool, rtr: bool) -> CobId {
@@ -237,9 +223,9 @@ impl From<u32> for CobId {
 
 pub struct InvalidCobId;
 
-impl From<InvalidCobId> for SDOAbortCode {
+impl From<InvalidCobId> for ODError {
     fn from(_: InvalidCobId) -> Self {
-        SDOAbortCode::InvalidValue
+        ODError::InvalidValue
     }
 }
 
@@ -272,16 +258,21 @@ pub struct PDOCommunicationParameter {
     inhibit_time: Cell<u16>,
     event_timer: Cell<u16>,
     sync_start_value: Cell<u8>,
+    cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
 }
 
 impl PDOCommunicationParameter {
-    pub fn new(cob_id: CobId) -> Self {
+    pub fn new(
+        cob_id: CobId,
+        cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
+    ) -> Self {
         PDOCommunicationParameter {
             cob_id: Cell::new(cob_id.into()),
             transmission_type: Cell::new(0),
             inhibit_time: Cell::new(0),
             event_timer: Cell::new(0),
             sync_start_value: Cell::new(0),
+            cob_id_update_func,
         }
     }
 
@@ -295,16 +286,34 @@ impl PDOCommunicationParameter {
 }
 
 #[derive(Default)]
-pub struct MappedVariables<'a>([Cell<Option<&'a Variable<'a>>>; 8]);
+pub struct TPDOMappingParameters<'a> {
+    /// The number of valid object entries within the mapping record.
+    /// The number of valid object entries shall be the number of the application objects
+    /// that shall be transmitted with the corresponding TPDO.
+    num_mapped_variables: Cell<u8>,
+    map: [Cell<Option<&'a Variable<'a>>>; 8],
+}
 
-impl MappedVariables<'_> {
+impl<'a> TPDOMappingParameters<'a> {
+    // slot 1-8
+    pub fn map_variable(&self, slot: u8, variable: &'a Variable<'a>) -> Result<(), ODError> {
+        match variable.pdo_size {
+            Some(n) if n.get() <= 8 => {
+                // TODO check sizes, slot validity
+                self.map[slot as usize].set(Some(variable));
+                Ok(())
+            }
+            _ => Err(ODError::ObjectCannotBeMapped),
+        }
+    }
+
     #[inline]
-    fn get_map_data_packed(&self, num: u8) -> u32 {
-        match self.0[num as usize - 1].get() {
+    pub fn get_map_data_packed(&self, num: u8) -> u32 {
+        match self.map[num as usize - 1].get() {
             Some(variable) => pack_variable_data(
                 variable.index,
                 variable.subindex,
-                variable.size().unwrap().get() * 8,
+                variable.pdo_size.unwrap().get() * 8,
             ),
             None => 0,
         }
@@ -312,13 +321,13 @@ impl MappedVariables<'_> {
 }
 
 #[inline]
-fn pack_variable_data(index: u16, subindex: u8, num_bits: usize) -> u32 {
+fn pack_variable_data(index: u16, subindex: u8, num_bits: u8) -> u32 {
     ((index as u32) << 16) + ((subindex as u32) << 8) + num_bits as u32
 }
 
 #[inline]
-fn unpack_variable_data(val: u32) -> (u16, u8, usize) {
-    ((val >> 16) as u16, (val >> 8) as u8, val as usize & 0xFF)
+fn unpack_variable_data(val: u32) -> (u16, u8, u8) {
+    ((val >> 16) as u16, (val >> 8) as u8, val as u8)
 }
 
 /// Multiple of 100µs

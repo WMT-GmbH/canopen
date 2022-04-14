@@ -1,37 +1,58 @@
-use core::cell::Cell;
-use core::num::NonZeroUsize;
+use core::cmp::Ordering;
 use core::ops::Deref;
-use core::sync::atomic::*;
+use core::sync::atomic::Ordering::Relaxed;
 
-use crate::sdo::SDOAbortCode;
+use crate::objectdictionary::ODError;
 
 pub trait DataLink {
-    fn size(&self, index: u16, subindex: u8) -> Option<NonZeroUsize>;
-    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode>; // TODO switch to ODError
-    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode>;
+    fn read(&self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError>;
+    fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError>;
 }
 
-pub struct WriteStream<'a> {
+pub trait AtomicDataLink {
+    fn read(&self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError>;
+    fn write(&self, write_stream: WriteStream<'_>) -> Result<(), ODError>;
+}
+
+pub enum ReadData<'a> {
+    B1([u8; 1]),
+    B2([u8; 2]),
+    B3([u8; 3]),
+    B4([u8; 4]),
+    B5([u8; 5]),
+    B6([u8; 6]),
+    B7([u8; 7]),
+    Bytes(&'a [u8]),
+}
+
+impl ReadData<'_> {
+    pub fn get(&self) -> &[u8] {
+        match self {
+            ReadData::B1(val) => val,
+            ReadData::B2(val) => val,
+            ReadData::B3(val) => val,
+            ReadData::B4(val) => val,
+            ReadData::B5(val) => val,
+            ReadData::B6(val) => val,
+            ReadData::B7(val) => val,
+            ReadData::Bytes(val) => val,
+        }
+    }
+}
+
+pub struct WriteData<'a> {
     pub index: u16,
     pub subindex: u8,
     pub new_data: &'a [u8],
     pub offset: usize,
+    pub promised_size: Option<usize>,
     pub is_last_segment: bool,
 }
 
-pub struct ReadStreamData<'a> {
-    pub index: u16,
-    pub subindex: u8,
-    pub(crate) buf: &'a mut [u8],
-    pub(crate) total_bytes_read: &'a mut usize,
-    pub(crate) is_last_segment: bool,
-}
+pub struct WriteStream<'a>(pub(crate) &'a WriteData<'a>);
 
-pub struct ReadStream<'a>(pub(crate) &'a mut ReadStreamData<'a>);
-pub struct UsedReadStream<'a>(pub(crate) &'a mut ReadStreamData<'a>);
-
-impl<'a> Deref for ReadStream<'a> {
-    type Target = ReadStreamData<'a>;
+impl<'a> Deref for WriteStream<'a> {
+    type Target = WriteData<'a>;
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
@@ -39,219 +60,174 @@ impl<'a> Deref for ReadStream<'a> {
     }
 }
 
-macro_rules! readonly_impl {
-    ($typ:ty) => {
-        impl DataLink for $typ {
-            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
+impl WriteData<'_> {
+    #[inline(always)]
+    pub fn is_first_segment(&self) -> bool {
+        self.offset == 0
+    }
+}
+
+impl WriteStream<'_> {
+    pub fn write_into(self, buf: &mut [u8]) -> Result<WriteStatus, ODError> {
+        if let Some(promised_size) = self.promised_size {
+            check_size(promised_size, buf.len())?;
+        }
+
+        let bytes_written = self.offset + self.new_data.len();
+        if bytes_written > buf.len() {
+            return Err(ODError::TooLong);
+        }
+
+        buf[self.offset..bytes_written].copy_from_slice(self.new_data);
+
+        if self.is_last_segment {
+            Ok(WriteStatus::Done { bytes_written })
+        } else {
+            Ok(WriteStatus::InProgress { bytes_written })
+        }
+    }
+}
+
+pub enum WriteStatus {
+    InProgress { bytes_written: usize },
+    Done { bytes_written: usize },
+}
+
+impl<'a> From<&'a [u8]> for ReadData<'a> {
+    #[inline]
+    fn from(val: &'a [u8]) -> Self {
+        ReadData::Bytes(val)
+    }
+}
+
+impl<'a> From<&'a str> for ReadData<'a> {
+    #[inline]
+    fn from(val: &'a str) -> Self {
+        ReadData::Bytes(val.as_bytes())
+    }
+}
+
+macro_rules! from_impl {
+    ($typ:ty, $variant:path) => {
+        impl From<$typ> for ReadData<'_> {
             #[inline]
-            fn read<'rs>(
-                &self,
-                mut read_stream: ReadStream<'rs>,
-            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-                let size = core::mem::size_of::<$typ>();
-                read_stream.0.buf[0..size].copy_from_slice(&self.to_le_bytes());
-                *read_stream.0.total_bytes_read += size;
-                read_stream.0.is_last_segment = true;
-
-                Ok(UsedReadStream(read_stream.0))
-            }
-            fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                Err(SDOAbortCode::ReadOnlyError)
+            fn from(val: $typ) -> Self {
+                $variant(val.to_le_bytes())
             }
         }
     };
 }
 
-readonly_impl!(u8);
-readonly_impl!(u16);
-readonly_impl!(u32);
+from_impl!(u8, ReadData::B1);
+from_impl!(i8, ReadData::B1);
+from_impl!(u16, ReadData::B2);
+from_impl!(i16, ReadData::B2);
+from_impl!(u32, ReadData::B4);
+from_impl!(i32, ReadData::B4);
 
-readonly_impl!(i8);
-readonly_impl!(i16);
-readonly_impl!(i32);
-
-macro_rules! cell_impl {
+macro_rules! try_from_impl {
     ($typ:ty) => {
-        impl DataLink for Cell<$typ> {
-            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
-            fn read<'rs>(
-                &self,
-                read_stream: ReadStream<'rs>,
-            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-                self.get().read(read_stream)
-            }
-            fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                if let Ok(data) = write_stream.new_data.try_into() {
-                    self.set(<$typ>::from_le_bytes(data));
+        impl<'a> TryFrom<WriteStream<'a>> for $typ {
+            type Error = ODError;
+
+            fn try_from(write_stream: WriteStream<'a>) -> Result<Self, Self::Error> {
+                debug_assert!(write_stream.offset == 0);
+                debug_assert!(write_stream.is_last_segment);
+
+                check_size(write_stream.new_data.len(), core::mem::size_of::<$typ>())?;
+                if let Some(size) = write_stream.promised_size {
+                    check_size(size, core::mem::size_of::<$typ>())?;
                 }
+                let data = write_stream.new_data.try_into().ok().unwrap();
+                Ok(<$typ>::from_le_bytes(data))
+            }
+        }
+    };
+}
+
+try_from_impl!(u8);
+try_from_impl!(i8);
+try_from_impl!(u16);
+try_from_impl!(i16);
+try_from_impl!(u32);
+try_from_impl!(i32);
+
+macro_rules! try_from_impl_array {
+    ($typ:ty) => {
+        impl<'a> TryFrom<WriteStream<'a>> for $typ {
+            type Error = ODError;
+
+            fn try_from(write_stream: WriteStream<'a>) -> Result<Self, Self::Error> {
+                debug_assert!(write_stream.offset == 0);
+                debug_assert!(write_stream.is_last_segment);
+
+                check_size(write_stream.new_data.len(), core::mem::size_of::<$typ>())?;
+                if let Some(size) = write_stream.promised_size {
+                    check_size(size, core::mem::size_of::<$typ>())?;
+                }
+                let data = write_stream.new_data.try_into().ok().unwrap();
+                Ok(data)
+            }
+        }
+    };
+}
+
+try_from_impl_array!([u8; 1]);
+try_from_impl_array!([u8; 2]);
+try_from_impl_array!([u8; 3]);
+try_from_impl_array!([u8; 4]);
+try_from_impl_array!([u8; 5]);
+try_from_impl_array!([u8; 6]);
+try_from_impl_array!([u8; 7]);
+
+fn check_size(given: usize, expected: usize) -> Result<(), ODError> {
+    match given.cmp(&expected) {
+        Ordering::Less => Err(ODError::TooShort),
+        Ordering::Greater => Err(ODError::TooLong),
+        Ordering::Equal => Ok(()),
+    }
+}
+
+macro_rules! atomic_data_link {
+    ($typ:ty) => {
+        impl AtomicDataLink for $typ {
+            fn read(&self, _: u16, _: u8) -> Result<ReadData<'_>, ODError> {
+                Ok(self.load(Relaxed).into())
+            }
+
+            fn write(&self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+                self.store(write_stream.try_into()?, Relaxed);
                 Ok(())
             }
         }
     };
 }
 
-cell_impl!(u8);
-cell_impl!(u16);
-cell_impl!(u32);
+atomic_data_link!(core::sync::atomic::AtomicU8);
+atomic_data_link!(core::sync::atomic::AtomicI8);
+atomic_data_link!(core::sync::atomic::AtomicU16);
+atomic_data_link!(core::sync::atomic::AtomicI16);
+atomic_data_link!(core::sync::atomic::AtomicU32);
+atomic_data_link!(core::sync::atomic::AtomicI32);
 
-cell_impl!(i8);
-cell_impl!(i16);
-cell_impl!(i32);
+macro_rules! atomic_data_link_cell {
+    ($typ:ty) => {
+        impl AtomicDataLink for $typ {
+            fn read(&self, _: u16, _: u8) -> Result<ReadData<'_>, ODError> {
+                Ok(self.get().into())
+            }
 
-macro_rules! atomic_impl {
-    ($typ:ty, $backing_typ:ty) => {
-        impl DataLink for $typ {
-            fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-                NonZeroUsize::new(core::mem::size_of::<$typ>())
-            }
-            fn read<'rs>(
-                &self,
-                read_stream: ReadStream<'rs>,
-            ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-                self.load(Ordering::Relaxed).read(read_stream)
-            }
-            fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-                if let Ok(data) = write_stream.new_data.try_into() {
-                    self.store(<$backing_typ>::from_le_bytes(data), Ordering::Relaxed);
-                }
+            fn write(&self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+                self.set(write_stream.try_into()?);
                 Ok(())
             }
         }
     };
 }
 
-atomic_impl!(AtomicU8, u8);
-atomic_impl!(AtomicU16, u16);
-atomic_impl!(AtomicU32, u32);
-
-atomic_impl!(AtomicI8, i8);
-atomic_impl!(AtomicI16, i16);
-atomic_impl!(AtomicI32, i32);
-
-impl DataLink for Cell<bool> {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        NonZeroUsize::new(core::mem::size_of::<bool>())
-    }
-    #[inline]
-    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        self.get().read(read_stream)
-    }
-    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        if write_stream.new_data[0] > 1 {
-            Err(SDOAbortCode::InvalidValue)
-        } else {
-            self.set(write_stream.new_data[0] > 0);
-            Ok(())
-        }
-    }
-}
-
-impl DataLink for AtomicBool {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        NonZeroUsize::new(1)
-    }
-    #[inline]
-    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        self.load(Ordering::Relaxed).read(read_stream)
-    }
-    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        if write_stream.new_data[0] > 1 {
-            Err(SDOAbortCode::InvalidValue)
-        } else {
-            self.store(write_stream.new_data[0] > 0, Ordering::Relaxed);
-            Ok(())
-        }
-    }
-}
-
-impl DataLink for bool {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        NonZeroUsize::new(1)
-    }
-    #[inline]
-    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        (*self as u8).read(read_stream)
-    }
-    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        Err(SDOAbortCode::ReadOnlyError)
-    }
-}
-
-impl DataLink for &str {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        NonZeroUsize::new(self.len())
-    }
-    #[inline]
-    fn read<'rs>(&self, read_stream: ReadStream<'rs>) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        self.as_bytes().read(read_stream)
-    }
-    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        Err(SDOAbortCode::ReadOnlyError)
-    }
-}
-
-impl DataLink for &[u8] {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        NonZeroUsize::new(self.len())
-    }
-    fn read<'rs>(
-        &self,
-        mut read_stream: ReadStream<'rs>,
-    ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        let unread_data = &self[*read_stream.0.total_bytes_read..];
-
-        let new_data_len = if unread_data.len() <= read_stream.0.buf.len() {
-            read_stream.0.is_last_segment = true;
-            unread_data.len()
-        } else {
-            read_stream.0.buf.len()
-        };
-
-        read_stream.0.buf[..new_data_len].copy_from_slice(&unread_data[..new_data_len]);
-        *read_stream.0.total_bytes_read += new_data_len;
-
-        Ok(UsedReadStream(read_stream.0))
-    }
-    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        Err(SDOAbortCode::ReadOnlyError)
-    }
-}
-
-pub struct ResourceNotAvailable;
-
-impl DataLink for ResourceNotAvailable {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        None
-    }
-
-    fn read<'rs>(
-        &self,
-        mut _read_stream: ReadStream<'rs>,
-    ) -> Result<UsedReadStream<'rs>, SDOAbortCode> {
-        Err(SDOAbortCode::ResourceNotAvailable)
-    }
-
-    fn write(&self, _write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        Err(SDOAbortCode::ResourceNotAvailable)
-    }
-}
-
-/*
-impl<T: DataLink, const N: usize> DataLink for [T; N] {
-    fn size(&self, _index: u16, _subindex: u8) -> Option<NonZeroUsize> {
-        todo!()
-    }
-
-    fn read(&self, mut read_stream: ReadStream<'_>) -> ResuUsedReadStream<(), SDOAbortCode> {
-        self[read_stream.subindex as usize].read(read_stream)
-    }
-
-    fn write(&self, write_stream: &WriteStream<'_>) -> Result<(), SDOAbortCode> {
-        self[write_stream.subindex as usize].write(write_stream)
-    }
-}
-*/
+atomic_data_link_cell!(core::cell::Cell<u8>);
+atomic_data_link_cell!(core::cell::Cell<i8>);
+atomic_data_link_cell!(core::cell::Cell<u16>);
+atomic_data_link_cell!(core::cell::Cell<i16>);
+atomic_data_link_cell!(core::cell::Cell<u32>);
+atomic_data_link_cell!(core::cell::Cell<i32>);
