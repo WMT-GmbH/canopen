@@ -107,7 +107,9 @@ impl<'a> SdoServer<'a> {
             CANOpenData::ResourceNotAvailable => return Err(SDOAbortCode::ResourceNotAvailable),
             CANOpenData::DataLinkRef(link) => link.write(WriteStream(&stream))?,
             CANOpenData::DataLinkCell(link) => {
-                let mut link_ref = link.borrow_mut();
+                let mut link_ref = link
+                    .try_borrow_mut()
+                    .map_err(|_| SDOAbortCode::LocalControlError)?;
                 link_ref.write(WriteStream(&stream))?;
                 if !stream.is_last_segment {
                     link_ref.lock();
@@ -202,7 +204,9 @@ impl<'a> SdoServer<'a> {
                 &mut response,
             ),
             CANOpenData::DataLinkCell(link) => {
-                let link_ref = link.borrow();
+                let link_ref = link
+                    .try_borrow()
+                    .map_err(|_| SDOAbortCode::LocalControlError)?;
                 let data = link_ref.read(self.last_index, self.last_subindex)?;
                 let is_expedited = fill_upload_response(data.get(), &mut response);
                 if !is_expedited {
