@@ -108,7 +108,7 @@ impl<'a> From<&'a str> for ReadData<'a> {
 }
 
 macro_rules! from_impl {
-    ($typ:ty, $variant:path) => {
+    ($typ:ty, $variant:path, @primitive) => {
         impl From<$typ> for ReadData<'_> {
             #[inline]
             fn from(val: $typ) -> Self {
@@ -116,14 +116,31 @@ macro_rules! from_impl {
             }
         }
     };
+
+    ($typ:ty, $variant:path, @array) => {
+        impl From<$typ> for ReadData<'_> {
+            #[inline]
+            fn from(val: $typ) -> Self {
+                $variant(val)
+            }
+        }
+    };
 }
 
-from_impl!(u8, ReadData::B1);
-from_impl!(i8, ReadData::B1);
-from_impl!(u16, ReadData::B2);
-from_impl!(i16, ReadData::B2);
-from_impl!(u32, ReadData::B4);
-from_impl!(i32, ReadData::B4);
+from_impl!([u8; 1], ReadData::B1, @array);
+from_impl!([u8; 2], ReadData::B2, @array);
+from_impl!([u8; 3], ReadData::B3, @array);
+from_impl!([u8; 4], ReadData::B4, @array);
+from_impl!([u8; 5], ReadData::B5, @array);
+from_impl!([u8; 6], ReadData::B6, @array);
+from_impl!([u8; 7], ReadData::B7, @array);
+
+from_impl!(u8, ReadData::B1, @primitive);
+from_impl!(i8, ReadData::B1, @primitive);
+from_impl!(u16, ReadData::B2, @primitive);
+from_impl!(i16, ReadData::B2, @primitive);
+from_impl!(u32, ReadData::B4, @primitive);
+from_impl!(i32, ReadData::B4, @primitive);
 
 macro_rules! try_from_impl {
     ($typ:ty) => {
