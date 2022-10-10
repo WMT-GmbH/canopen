@@ -321,12 +321,12 @@ impl<'a> TPDOMappingParameters<'a> {
 }
 
 #[inline]
-fn pack_variable_data(index: u16, subindex: u8, num_bits: u8) -> u32 {
+pub fn pack_variable_data(index: u16, subindex: u8, num_bits: u8) -> u32 {
     ((index as u32) << 16) + ((subindex as u32) << 8) + num_bits as u32
 }
 
 #[inline]
-fn unpack_variable_data(val: u32) -> (u16, u8, u8) {
+pub fn unpack_variable_data(val: u32) -> (u16, u8, u8) {
     ((val >> 16) as u16, (val >> 8) as u8, val as u8)
 }
 
