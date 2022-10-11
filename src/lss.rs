@@ -283,7 +283,7 @@ impl<'a> Lss<'a> {
                 }
             }
             (IDENTIFY_REVISION_NUMBER_LOW, PartialCommandState::IdentifyProductCodeMatched) => {
-                if address_data >= self.lss_address[2] {
+                if address_data <= self.lss_address[2] {
                     self.partial_command_state =
                         PartialCommandState::IdentifyRevisionNumberLowCodeMatched;
                     return None;
@@ -293,7 +293,7 @@ impl<'a> Lss<'a> {
                 IDENTIFY_REVISION_NUMBER_HIGH,
                 PartialCommandState::IdentifyRevisionNumberLowCodeMatched,
             ) => {
-                if address_data <= self.lss_address[2] {
+                if address_data >= self.lss_address[2] {
                     self.partial_command_state =
                         PartialCommandState::IdentifyRevisionNumberHighCodeMatched;
                     return None;
@@ -303,7 +303,7 @@ impl<'a> Lss<'a> {
                 IDENTIFY_SERIAL_NUMBER_LOW,
                 PartialCommandState::IdentifyRevisionNumberHighCodeMatched,
             ) => {
-                if address_data >= self.lss_address[3] {
+                if address_data <= self.lss_address[3] {
                     self.partial_command_state =
                         PartialCommandState::IdentifySerialNumberLowCodeMatched;
                     return None;
@@ -395,5 +395,151 @@ impl<F: embedded_can::Frame> CanOpenService<F> for Lss<'_> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    struct TestFrame;
+
+    impl embedded_can::Frame for TestFrame {
+        fn new(_: impl Into<Id>, _: &[u8]) -> Result<Self, ()> {
+            Ok(TestFrame)
+        }
+
+        fn new_remote(_: impl Into<Id>, _: usize) -> Result<Self, ()> {
+            unimplemented!()
+        }
+
+        fn is_extended(&self) -> bool {
+            unimplemented!()
+        }
+
+        fn is_remote_frame(&self) -> bool {
+            unimplemented!()
+        }
+
+        fn id(&self) -> Id {
+            unimplemented!()
+        }
+
+        fn dlc(&self) -> usize {
+            unimplemented!()
+        }
+
+        fn data(&self) -> &[u8] {
+            unimplemented!()
+        }
+    }
+
+    struct IdentifyRequest {
+        vendor_id: u8,
+        product_code: u8,
+        revision_low: u8,
+        revision_high: u8,
+        serial_low: u8,
+        serial_high: u8,
+    }
+
+    fn test_identify_request(lss: &mut Lss<'_>, req: IdentifyRequest) -> Option<TestFrame> {
+        let mut request = [IDENTIFY_VENDOR_ID, req.vendor_id, 0, 0, 0, 0, 0, 0];
+        assert!(lss.on_request::<TestFrame>(&request).is_none());
+
+        request[0] = IDENTIFY_PRODUCT_CODE;
+        request[1] = req.product_code;
+        assert!(lss.on_request::<TestFrame>(&request).is_none());
+
+        request[0] = IDENTIFY_REVISION_NUMBER_LOW;
+        request[1] = req.revision_low;
+        assert!(lss.on_request::<TestFrame>(&request).is_none());
+
+        request[0] = IDENTIFY_REVISION_NUMBER_HIGH;
+        request[1] = req.revision_high;
+        assert!(lss.on_request::<TestFrame>(&request).is_none());
+
+        request[0] = IDENTIFY_SERIAL_NUMBER_LOW;
+        request[1] = req.serial_low;
+        assert!(lss.on_request::<TestFrame>(&request).is_none());
+
+        request[0] = IDENTIFY_SERIAL_NUMBER_HIGH;
+        request[1] = req.serial_high;
+        lss.on_request::<TestFrame>(&request)
+    }
+
+    #[test]
+    fn test_identify() {
+        let mut lss = Lss::new(NodeId::NODE_ID_0, 1, 2, 3, 4);
+
+        let exact = IdentifyRequest {
+            vendor_id: 1,
+            product_code: 2,
+            revision_low: 3,
+            revision_high: 3,
+            serial_low: 4,
+            serial_high: 4,
+        };
+        assert!(test_identify_request(&mut lss, exact).is_some());
+
+        let lower_bound = IdentifyRequest {
+            vendor_id: 1,
+            product_code: 2,
+            revision_low: 3,
+            revision_high: 42,
+            serial_low: 4,
+            serial_high: 42,
+        };
+        assert!(test_identify_request(&mut lss, lower_bound).is_some());
+
+        let upper_bound = IdentifyRequest {
+            vendor_id: 1,
+            product_code: 2,
+            revision_low: 0,
+            revision_high: 3,
+            serial_low: 1,
+            serial_high: 4,
+        };
+        assert!(test_identify_request(&mut lss, upper_bound).is_some());
+
+        let wrong_vendor = IdentifyRequest {
+            vendor_id: 0,
+            product_code: 2,
+            revision_low: 3,
+            revision_high: 3,
+            serial_low: 4,
+            serial_high: 4,
+        };
+        assert!(test_identify_request(&mut lss, wrong_vendor).is_none());
+
+        let wrong_product_code = IdentifyRequest {
+            vendor_id: 1,
+            product_code: 0,
+            revision_low: 3,
+            revision_high: 3,
+            serial_low: 4,
+            serial_high: 4,
+        };
+        assert!(test_identify_request(&mut lss, wrong_product_code).is_none());
+
+        let revision_too_low = IdentifyRequest {
+            vendor_id: 1,
+            product_code: 2,
+            revision_low: 1,
+            revision_high: 2,
+            serial_low: 4,
+            serial_high: 4,
+        };
+        assert!(test_identify_request(&mut lss, revision_too_low).is_none());
+
+        let revision_too_high = IdentifyRequest {
+            vendor_id: 1,
+            product_code: 2,
+            revision_low: 4,
+            revision_high: 6,
+            serial_low: 4,
+            serial_high: 4,
+        };
+        assert!(test_identify_request(&mut lss, revision_too_high).is_none());
     }
 }

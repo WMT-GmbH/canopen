@@ -1,4 +1,3 @@
-#![feature(const_fn_trait_bound)]
 #![feature(coerce_unsized, unsize)] // ODCell unsizing
 #![warn(rust_2018_idioms)]
 #![no_std]
