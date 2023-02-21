@@ -142,8 +142,15 @@ from_impl!(i16, ReadData::B2, @primitive);
 from_impl!(u32, ReadData::B4, @primitive);
 from_impl!(i32, ReadData::B4, @primitive);
 
+impl From<bool> for ReadData<'_> {
+    #[inline]
+    fn from(val: bool) -> Self {
+        ReadData::from(val as u8)
+    }
+}
+
 macro_rules! try_from_impl {
-    ($typ:ty) => {
+    ($typ:ty, @primitive) => {
         impl<'a> TryFrom<WriteStream<'a>> for $typ {
             type Error = ODError;
 
@@ -160,17 +167,8 @@ macro_rules! try_from_impl {
             }
         }
     };
-}
 
-try_from_impl!(u8);
-try_from_impl!(i8);
-try_from_impl!(u16);
-try_from_impl!(i16);
-try_from_impl!(u32);
-try_from_impl!(i32);
-
-macro_rules! try_from_impl_array {
-    ($typ:ty) => {
+    ($typ:ty, @array) => {
         impl<'a> TryFrom<WriteStream<'a>> for $typ {
             type Error = ODError;
 
@@ -189,13 +187,32 @@ macro_rules! try_from_impl_array {
     };
 }
 
-try_from_impl_array!([u8; 1]);
-try_from_impl_array!([u8; 2]);
-try_from_impl_array!([u8; 3]);
-try_from_impl_array!([u8; 4]);
-try_from_impl_array!([u8; 5]);
-try_from_impl_array!([u8; 6]);
-try_from_impl_array!([u8; 7]);
+try_from_impl!([u8; 1], @array);
+try_from_impl!([u8; 2], @array);
+try_from_impl!([u8; 3], @array);
+try_from_impl!([u8; 4], @array);
+try_from_impl!([u8; 5], @array);
+try_from_impl!([u8; 6], @array);
+try_from_impl!([u8; 7], @array);
+
+try_from_impl!(u8, @primitive);
+try_from_impl!(i8, @primitive);
+try_from_impl!(u16, @primitive);
+try_from_impl!(i16, @primitive);
+try_from_impl!(u32, @primitive);
+try_from_impl!(i32, @primitive);
+
+impl<'a> TryFrom<WriteStream<'a>> for bool {
+    type Error = ODError;
+
+    fn try_from(write_stream: WriteStream<'a>) -> Result<Self, Self::Error> {
+        match u8::try_from(write_stream)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(ODError::InvalidValue),
+        }
+    }
+}
 
 fn check_size(given: usize, expected: usize) -> Result<(), ODError> {
     match given.cmp(&expected) {
@@ -206,7 +223,7 @@ fn check_size(given: usize, expected: usize) -> Result<(), ODError> {
 }
 
 macro_rules! atomic_data_link {
-    ($typ:ty) => {
+    ($typ:ty, @atomic) => {
         impl AtomicDataLink for $typ {
             fn read(&self, _: u16, _: u8) -> Result<ReadData<'_>, ODError> {
                 Ok(self.load(Relaxed).into())
@@ -218,17 +235,8 @@ macro_rules! atomic_data_link {
             }
         }
     };
-}
 
-atomic_data_link!(core::sync::atomic::AtomicU8);
-atomic_data_link!(core::sync::atomic::AtomicI8);
-atomic_data_link!(core::sync::atomic::AtomicU16);
-atomic_data_link!(core::sync::atomic::AtomicI16);
-atomic_data_link!(core::sync::atomic::AtomicU32);
-atomic_data_link!(core::sync::atomic::AtomicI32);
-
-macro_rules! atomic_data_link_cell {
-    ($typ:ty) => {
+    ($typ:ty, @cell) => {
         impl AtomicDataLink for $typ {
             fn read(&self, _: u16, _: u8) -> Result<ReadData<'_>, ODError> {
                 Ok(self.get().into())
@@ -242,9 +250,18 @@ macro_rules! atomic_data_link_cell {
     };
 }
 
-atomic_data_link_cell!(core::cell::Cell<u8>);
-atomic_data_link_cell!(core::cell::Cell<i8>);
-atomic_data_link_cell!(core::cell::Cell<u16>);
-atomic_data_link_cell!(core::cell::Cell<i16>);
-atomic_data_link_cell!(core::cell::Cell<u32>);
-atomic_data_link_cell!(core::cell::Cell<i32>);
+atomic_data_link!(core::sync::atomic::AtomicU8, @atomic);
+atomic_data_link!(core::sync::atomic::AtomicI8, @atomic);
+atomic_data_link!(core::sync::atomic::AtomicU16, @atomic);
+atomic_data_link!(core::sync::atomic::AtomicI16, @atomic);
+atomic_data_link!(core::sync::atomic::AtomicU32, @atomic);
+atomic_data_link!(core::sync::atomic::AtomicI32, @atomic);
+atomic_data_link!(core::sync::atomic::AtomicBool, @atomic);
+
+atomic_data_link!(core::cell::Cell<u8>, @cell);
+atomic_data_link!(core::cell::Cell<i8>, @cell);
+atomic_data_link!(core::cell::Cell<u16>, @cell);
+atomic_data_link!(core::cell::Cell<i16>, @cell);
+atomic_data_link!(core::cell::Cell<u32>, @cell);
+atomic_data_link!(core::cell::Cell<i32>, @cell);
+atomic_data_link!(core::cell::Cell<bool>, @cell);
