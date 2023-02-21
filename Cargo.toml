@@ -7,5 +7,5 @@ keywords = ["embedded-hal"]
 
 
 [dependencies]
-embedded-can = "0.3.0"
+embedded-can = "0.4.1"
 

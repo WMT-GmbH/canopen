@@ -8,13 +8,13 @@ pub struct CanOpenFrame {
 }
 
 impl Frame for CanOpenFrame {
-    fn new(id: impl Into<Id>, data: &[u8]) -> Result<Self, ()> {
+    fn new(id: impl Into<Id>, data: &[u8]) -> Option<Self> {
         if data.len() > 8 {
-            return Err(());
+            return None;
         }
         let mut frame_data = [0; 8];
         frame_data[0..data.len()].copy_from_slice(data);
-        Ok(CanOpenFrame {
+        Some(CanOpenFrame {
             id: id.into(),
             data: frame_data,
             dlc: data.len() as u8,
@@ -22,11 +22,11 @@ impl Frame for CanOpenFrame {
         })
     }
 
-    fn new_remote(id: impl Into<Id>, dlc: usize) -> Result<Self, ()> {
+    fn new_remote(id: impl Into<Id>, dlc: usize) -> Option<Self> {
         if dlc > 8 {
-            return Err(());
+            return None;
         }
-        Ok(CanOpenFrame {
+        Some(CanOpenFrame {
             id: id.into(),
             data: [0; 8],
             dlc: dlc as u8,

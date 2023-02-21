@@ -405,11 +405,11 @@ mod test {
     struct TestFrame;
 
     impl embedded_can::Frame for TestFrame {
-        fn new(_: impl Into<Id>, _: &[u8]) -> Result<Self, ()> {
-            Ok(TestFrame)
+        fn new(_: impl Into<Id>, _: &[u8]) -> Option<Self> {
+            Some(TestFrame)
         }
 
-        fn new_remote(_: impl Into<Id>, _: usize) -> Result<Self, ()> {
+        fn new_remote(_: impl Into<Id>, _: usize) -> Option<Self> {
             unimplemented!()
         }
 
