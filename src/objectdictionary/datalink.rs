@@ -40,6 +40,16 @@ impl ReadData<'_> {
     }
 }
 
+/// A chunk of data to be written using SDO
+///
+/// ## Expedited transfer
+/// * `new_data` is 1 to 4 bytes long TODO 0 possible?
+/// * `offset` is 0
+/// * `is_last_segment` is true
+///
+/// ## Segmented transfer
+/// * `new_data` is 1 to 7 bytes long TODO 0 possible?
+/// * `offset` is the number of bytes already written in a previous chunk
 pub struct WriteData<'a> {
     pub index: u16,
     pub subindex: u8,
@@ -49,6 +59,27 @@ pub struct WriteData<'a> {
     pub is_last_segment: bool,
 }
 
+/// A read-only view of `WriteData`
+///
+/// Can be directly consumed into objects that are 7 bytes or smaller.
+/// ```
+/// # use canopen::objectdictionary::datalink::WriteStream;
+/// # fn demo(write_stream: WriteStream){
+///  let data: [u8; 7] = write_stream.try_into().unwrap();
+/// # }
+/// # fn demo2(write_stream: WriteStream){
+///  let data: i32 = write_stream.try_into().unwrap();
+/// # }
+///
+/// ```
+///
+/// Can be written into a buffer.
+/// ```
+/// # use canopen::objectdictionary::datalink::WriteStream;
+/// # fn demo(write_stream: WriteStream){
+///  let mut buf = [0; 256];
+///  write_stream.write_into(&mut buf).unwrap();
+/// # }
 pub struct WriteStream<'a>(pub(crate) &'a WriteData<'a>);
 
 impl<'a> Deref for WriteStream<'a> {
@@ -70,7 +101,9 @@ impl WriteData<'_> {
 impl WriteStream<'_> {
     pub fn write_into(self, buf: &mut [u8]) -> Result<WriteStatus, ODError> {
         if let Some(promised_size) = self.promised_size {
-            check_size(promised_size, buf.len())?;
+            if promised_size > buf.len() {
+                return Err(ODError::TooLong);
+            }
         }
 
         let bytes_written = self.offset + self.new_data.len();
