@@ -174,6 +174,7 @@ from_impl!(u16, ReadData::B2, @primitive);
 from_impl!(i16, ReadData::B2, @primitive);
 from_impl!(u32, ReadData::B4, @primitive);
 from_impl!(i32, ReadData::B4, @primitive);
+from_impl!(f32, ReadData::B4, @primitive);
 
 impl From<bool> for ReadData<'_> {
     #[inline]
@@ -234,6 +235,7 @@ try_from_impl!(u16, @primitive);
 try_from_impl!(i16, @primitive);
 try_from_impl!(u32, @primitive);
 try_from_impl!(i32, @primitive);
+try_from_impl!(f32, @primitive);
 
 impl<'a> TryFrom<WriteStream<'a>> for bool {
     type Error = ODError;
@@ -290,6 +292,7 @@ atomic_data_link!(core::sync::atomic::AtomicI16, @atomic);
 atomic_data_link!(core::sync::atomic::AtomicU32, @atomic);
 atomic_data_link!(core::sync::atomic::AtomicI32, @atomic);
 atomic_data_link!(core::sync::atomic::AtomicBool, @atomic);
+atomic_data_link!(atomic_float::AtomicF32, @atomic);
 
 atomic_data_link!(core::cell::Cell<u8>, @cell);
 atomic_data_link!(core::cell::Cell<i8>, @cell);
@@ -297,4 +300,5 @@ atomic_data_link!(core::cell::Cell<u16>, @cell);
 atomic_data_link!(core::cell::Cell<i16>, @cell);
 atomic_data_link!(core::cell::Cell<u32>, @cell);
 atomic_data_link!(core::cell::Cell<i32>, @cell);
+atomic_data_link!(core::cell::Cell<f32>, @cell);
 atomic_data_link!(core::cell::Cell<bool>, @cell);

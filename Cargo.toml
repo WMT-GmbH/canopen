@@ -8,4 +8,4 @@ keywords = ["embedded-hal"]
 
 [dependencies]
 embedded-can = "0.4.1"
-
+atomic_float = { version = "0.1.0", default-features = false }
