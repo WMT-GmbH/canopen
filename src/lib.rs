@@ -1,5 +1,3 @@
-#![feature(coerce_unsized, unsize)] // ODCell unsizing
-#![warn(rust_2018_idioms)]
 #![no_std]
 
 use embedded_can::Id;

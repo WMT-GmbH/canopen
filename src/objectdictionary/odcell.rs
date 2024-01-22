@@ -1,8 +1,7 @@
 use core::cell::{Cell, UnsafeCell};
 use core::fmt::Debug;
 use core::hint::unreachable_unchecked;
-use core::marker::Unsize;
-use core::ops::{CoerceUnsized, Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 #[derive(Copy, Clone)]
 enum BorrowState {
@@ -109,8 +108,6 @@ impl<T: ?Sized> ODCell<T> {
 
 unsafe impl<T: ?Sized> Send for ODCell<T> where T: Send {}
 
-impl<T: CoerceUnsized<U>, U> CoerceUnsized<ODCell<U>> for ODCell<T> {}
-
 struct BorrowRef<'b> {
     borrow: &'b Cell<BorrowState>,
 }
@@ -186,8 +183,6 @@ impl<T: ?Sized> Deref for Ref<'_, T> {
     }
 }
 
-impl<'b, T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<Ref<'b, U>> for Ref<'b, T> {}
-
 struct BorrowRefMut<'b> {
     borrow: &'b Cell<BorrowState>,
 }
@@ -244,5 +239,3 @@ impl<T: ?Sized> DerefMut for RefMut<'_, T> {
         self.value
     }
 }
-
-impl<'b, T: ?Sized + Unsize<U>, U: ?Sized> CoerceUnsized<RefMut<'b, U>> for RefMut<'b, T> {}
