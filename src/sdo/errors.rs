@@ -3,7 +3,7 @@ use core::fmt;
 use crate::objectdictionary::ODError;
 
 #[repr(u32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SDOAbortCode {
     UnknownAbortCode,
     ToggleBitNotAlternated = 0x0503_0000,

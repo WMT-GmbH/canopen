@@ -1,6 +1,7 @@
 pub use errors::SDOAbortCode;
 pub use server::SdoServer;
 
+pub mod client;
 pub mod errors;
 pub mod server;
 

@@ -2,7 +2,6 @@ use embedded_can::{Id, StandardId};
 
 use crate::objectdictionary::datalink::{WriteData, WriteStream};
 use crate::objectdictionary::{CANOpenData, ObjectDictionary, ObjectDictionaryExt, Variable};
-use crate::sdo::errors::SDOAbortCode;
 use crate::{CanOpenService, NodeId};
 
 use super::*;
