@@ -1,6 +1,6 @@
 #![no_std]
 
-use embedded_can::Id;
+use embedded_can::{Id, StandardId};
 
 pub use objectdictionary::ObjectDictionary;
 
@@ -73,8 +73,18 @@ impl NodeId {
         NodeId(node_id)
     }
 
-    pub const fn raw(&self) -> u8 {
+    pub const fn raw(self) -> u8 {
         self.0
+    }
+
+    pub const fn sdo_tx_cobid(self) -> StandardId {
+        // SAFETY: Maximum StandardId is 0x7FF, maximum node_id is 0x7F
+        unsafe { StandardId::new_unchecked(0x580 + self.0 as u16) }
+    }
+
+    pub const fn sdo_rx_cobid(self) -> StandardId {
+        // SAFETY: Maximum StandardId is 0x7FF, maximum node_id is 0x7F
+        unsafe { StandardId::new_unchecked(0x600 + self.0 as u16) }
     }
 
     pub const NODE_ID_0: NodeId = NodeId(0);

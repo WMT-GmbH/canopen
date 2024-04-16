@@ -46,13 +46,9 @@ impl<F: embedded_can::Frame> CanOpenService<F> for SdoServer<'_> {
 
 impl<'a> SdoServer<'a> {
     pub fn new(node_id: NodeId, od: ObjectDictionary<'a>) -> Self {
-        // SAFETY: Maximum StandardId is 0x7FF, maximum node_id is 0x7F
-        let tx_cobid = unsafe { StandardId::new_unchecked(0x580 + node_id.raw() as u16) };
-        let rx_cobid = unsafe { StandardId::new_unchecked(0x600 + node_id.raw() as u16) };
-
         SdoServer {
-            rx_cobid,
-            tx_cobid,
+            rx_cobid: node_id.sdo_rx_cobid(),
+            tx_cobid: node_id.sdo_tx_cobid(),
             od,
             last_index: 0,
             last_subindex: 0,
