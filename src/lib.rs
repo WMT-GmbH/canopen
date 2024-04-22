@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(inline_const)]
 
 use embedded_can::{Id, StandardId};
 
@@ -9,23 +10,24 @@ use crate::nmt::Nmt;
 use crate::sdo::SdoServer;
 
 pub mod lss;
+pub mod meta;
 pub mod nmt;
 pub mod objectdictionary;
-pub mod pdo;
+// pub mod pdo;
 pub mod sdo;
 
-pub trait CanOpenService<F: embedded_can::Frame> {
-    fn on_message(&mut self, frame: &F) -> Option<F>;
+pub trait CanOpenService<F: embedded_can::Frame, T, const N: usize> {
+    fn on_message(&mut self, frame: &F, od: &mut ObjectDictionary<T, N>) -> Option<F>;
 }
 
 pub struct CanOpenNode<'a> {
-    pub sdo: SdoServer<'a>,
+    pub sdo: SdoServer,
     pub lss: Lss<'a>,
     pub nmt: Nmt<'a>,
 }
 
-impl<F: embedded_can::Frame> CanOpenService<F> for CanOpenNode<'_> {
-    fn on_message(&mut self, frame: &F) -> Option<F> {
+impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for CanOpenNode<'_> {
+    fn on_message(&mut self, frame: &F, od: &mut ObjectDictionary<T, N>) -> Option<F> {
         match frame.id() {
             Id::Standard(id) => {
                 // ignore messages with wrong length
@@ -41,7 +43,7 @@ impl<F: embedded_can::Frame> CanOpenService<F> for CanOpenNode<'_> {
                     }
                 } else if id == self.sdo.rx_cobid {
                     if let Ok(data) = frame.data().try_into() {
-                        return self.sdo.on_request(data);
+                        return self.sdo.on_request(data, od);
                     }
                 } else if id == Lss::LSS_REQUEST_ID {
                     if let Ok(data) = frame.data().try_into() {

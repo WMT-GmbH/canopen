@@ -1,7 +1,7 @@
 use embedded_can::{Id, StandardId};
 
-use crate::CanOpenService;
 use crate::NodeId;
+use crate::{CanOpenService, ObjectDictionary};
 
 type RequestResult = Option<[u8; 8]>;
 
@@ -385,8 +385,8 @@ enum PartialCommandState {
     SwitchRevisionNumberCodeMatched,
 }
 
-impl<F: embedded_can::Frame> CanOpenService<F> for Lss<'_> {
-    fn on_message(&mut self, frame: &F) -> Option<F> {
+impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for Lss<'_> {
+    fn on_message(&mut self, frame: &F, _: &mut ObjectDictionary<T, N>) -> Option<F> {
         if frame.id() != Id::Standard(Lss::LSS_REQUEST_ID) {
             return None;
         }

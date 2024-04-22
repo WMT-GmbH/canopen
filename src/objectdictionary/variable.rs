@@ -2,6 +2,7 @@ use crate::objectdictionary::datalink::{AtomicDataLink, DataLink};
 use crate::objectdictionary::odcell::ODCell;
 use core::num::NonZeroU8;
 
+// TODO remove
 #[derive(Clone)]
 pub struct Variable<'a> {
     pub index: u16,
@@ -49,6 +50,7 @@ impl<'a> Variable<'a> {
     }
 }
 
+// TODO remove
 #[derive(Clone)]
 pub enum CANOpenData<'a> {
     B1([u8; 1]),

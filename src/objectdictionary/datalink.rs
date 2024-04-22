@@ -9,11 +9,28 @@ pub trait DataLink {
     fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError>;
 }
 
+pub trait BasicData {
+    fn read(&self) -> ReadData<'_>;
+    fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError>;
+}
+
+impl<T: BasicData> DataLink for T {
+    fn read(&self, _: u16, _: u8) -> Result<ReadData<'_>, ODError> {
+        Ok(self.read())
+    }
+
+    fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+        self.write(write_stream)
+    }
+}
+
+// TODO remove
 pub trait AtomicDataLink {
     fn read(&self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError>;
     fn write(&self, write_stream: WriteStream<'_>) -> Result<(), ODError>;
 }
 
+#[derive(Eq, PartialEq, Debug)]
 pub enum ReadData<'a> {
     B1([u8; 1]),
     B2([u8; 2]),
@@ -26,7 +43,7 @@ pub enum ReadData<'a> {
 }
 
 impl ReadData<'_> {
-    pub fn get(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         match self {
             ReadData::B1(val) => val,
             ReadData::B2(val) => val,
@@ -257,6 +274,50 @@ fn check_size(given: usize, expected: usize) -> Result<(), ODError> {
         Ordering::Less => Err(ODError::TooShort),
         Ordering::Greater => Err(ODError::TooLong),
         Ordering::Equal => Ok(()),
+    }
+}
+
+macro_rules! basic_data {
+    ($typ:ty) => {
+        impl BasicData for $typ {
+            fn read(&self) -> ReadData<'_> {
+                ReadData::from(*self)
+            }
+
+            fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+                *self = write_stream.try_into()?;
+                Ok(())
+            }
+        }
+    };
+}
+
+basic_data!(bool);
+basic_data!(i8);
+basic_data!(i16);
+basic_data!(i32);
+basic_data!(u8);
+basic_data!(u16);
+basic_data!(u32);
+basic_data!(f32);
+
+impl BasicData for &[u8] {
+    fn read(&self) -> ReadData<'_> {
+        ReadData::from(*self)
+    }
+
+    fn write(&mut self, _: WriteStream<'_>) -> Result<(), ODError> {
+        Err(ODError::ReadOnlyError)
+    }
+}
+
+impl BasicData for &str {
+    fn read(&self) -> ReadData<'_> {
+        ReadData::from(*self)
+    }
+
+    fn write(&mut self, _: WriteStream<'_>) -> Result<(), ODError> {
+        Err(ODError::ReadOnlyError)
     }
 }
 

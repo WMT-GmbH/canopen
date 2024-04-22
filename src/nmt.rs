@@ -1,6 +1,6 @@
 use embedded_can::{Id, StandardId};
 
-use crate::{CanOpenService, NodeId};
+use crate::{CanOpenService, NodeId, ObjectDictionary};
 
 pub struct Nmt<'a> {
     node_id: NodeId,
@@ -31,8 +31,8 @@ impl<'a> Nmt<'a> {
     }
 }
 
-impl<F: embedded_can::Frame> CanOpenService<F> for Nmt<'_> {
-    fn on_message(&mut self, frame: &F) -> Option<F> {
+impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for Nmt<'_> {
+    fn on_message(&mut self, frame: &F, _: &mut ObjectDictionary<T, N>) -> Option<F> {
         if frame.id() != Id::Standard(Self::NMT_REQUEST_ID) {
             return None;
         }

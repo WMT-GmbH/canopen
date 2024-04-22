@@ -9,3 +9,4 @@ keywords = ["embedded-hal"]
 [dependencies]
 embedded-can = "0.4.1"
 atomic_float = { git = "https://github.com/dimpolo/atomic_float.git", branch = "dev", default-features = false }
+canopen-derive = { path = "canopen-derive" }

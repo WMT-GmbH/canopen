@@ -1,3 +1,6 @@
+use crate::meta::{from_raw_parts_mut, DynMetadata};
+use crate::objectdictionary::datalink::{BasicData, DataLink, ReadData, WriteStream};
+use core::num::NonZeroU8;
 pub use variable::{CANOpenData, Variable};
 
 use crate::sdo::SDOAbortCode;
@@ -6,35 +9,140 @@ pub mod datalink;
 pub mod odcell;
 pub mod variable;
 
-pub type ObjectDictionary<'a> = &'a [Variable<'a>];
+pub use canopen_derive::OdData;
 
-pub trait ObjectDictionaryExt<'a> {
-    fn find(&self, index: u16, subindex: u8) -> Result<&'a Variable<'a>, ODError>;
+pub trait OdData {
+    type OdType;
+
+    fn into_od(self) -> Self::OdType;
 }
 
-impl<'a> ObjectDictionaryExt<'a> for ObjectDictionary<'a> {
-    fn find(&self, index: u16, subindex: u8) -> Result<&'a Variable<'a>, ODError> {
-        match self.binary_search_by(|obj| (obj.index, obj.subindex).cmp(&(index, subindex))) {
-            Ok(position) => Ok(&self[position]),
-            Err(position) => {
-                // If there is an object with the same index but different subindex
-                // we need to return ODError::SubindexDoesNotExist.
+pub struct ObjectDictionary<T, const N: usize> {
+    indices: [u16; N],
+    subindices: [u8; N],
+    pdo_sizes: [Option<NonZeroU8>; N],
+    offsets: [usize; N],
+    vtables: [DynMetadata<dyn DataLink>; N],
+    pub data: T,
+}
 
-                // Binary search will return the position at which one could insert
-                // the searched for variable.
-                // If an object with the same index exists, the returned position will point into
-                // or just past such an object.
+impl<T, const N: usize> ObjectDictionary<T, N> {
+    #[doc(hidden)]
+    pub unsafe fn new(
+        indices: [u16; N],
+        subindices: [u8; N],
+        pdo_sizes: [Option<NonZeroU8>; N],
+        offsets: [usize; N],
+        vtables: [DynMetadata<dyn DataLink>; N],
+        data: T,
+    ) -> Self {
+        ObjectDictionary {
+            indices,
+            subindices,
+            pdo_sizes,
+            offsets,
+            vtables,
+            data,
+        }
+    }
 
-                // So if the variables at position and position - 1 do not match,
-                // such an object cannot exist.
-                if position < self.len() && self[position].index == index {
-                    return Err(ODError::SubindexDoesNotExist);
-                }
-                if position != 0 && self[position - 1].index == index {
-                    return Err(ODError::SubindexDoesNotExist);
-                }
-                Err(ODError::ObjectDoesNotExist)
-            }
+    pub fn find(&mut self, index: u16, subindex: u8) -> Result<&mut dyn DataLink, ODError> {
+        let position = self.search(index, subindex)?;
+        Ok(self.get(position))
+    }
+
+    pub fn read(&mut self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
+        self.find(index, subindex)?.read(index, subindex)
+    }
+
+    pub(crate) fn get(&mut self, position: usize) -> &mut dyn DataLink {
+        let mut data_ptr = &mut self.data as *mut T as *mut ();
+        unsafe {
+            data_ptr = data_ptr.byte_add(self.offsets[position]);
+        }
+        let metadata = self.vtables[position];
+        let fat_ptr = from_raw_parts_mut(data_ptr, metadata);
+        unsafe { &mut *fat_ptr }
+    }
+
+    pub(crate) fn get_plus(&mut self, position: usize) -> (&mut dyn DataLink, OdInfo) {
+        let mut data_ptr = &mut self.data as *mut T as *mut ();
+        unsafe {
+            data_ptr = data_ptr.byte_add(self.offsets[position]);
+        }
+        let metadata = self.vtables[position];
+        let fat_ptr = from_raw_parts_mut(data_ptr, metadata);
+        (
+            unsafe { &mut *fat_ptr },
+            OdInfo {
+                indices: &self.indices,
+                subindices: &self.subindices,
+                pdo_sizes: &self.pdo_sizes,
+            },
+        )
+    }
+
+    pub(crate) fn search(&self, index: u16, subindex: u8) -> Result<usize, ODError> {
+        od_search(&self.indices, &self.subindices, index, subindex)
+    }
+}
+
+pub struct OdInfo<'a> {
+    indices: &'a [u16],
+    subindices: &'a [u8],
+    pdo_sizes: &'a [Option<NonZeroU8>],
+}
+
+pub(crate) fn od_search(
+    indices: &[u16],
+    subindices: &[u8],
+    index: u16,
+    subindex: u8,
+) -> Result<usize, ODError> {
+    let mut partion_point = indices.partition_point(|&i| i < index);
+    if indices.get(partion_point).copied() != Some(index) {
+        return Err(ODError::ObjectDoesNotExist);
+    }
+    loop {
+        if indices.get(partion_point).copied() != Some(index) {
+            break Err(ODError::SubindexDoesNotExist);
+        }
+        if subindices[partion_point] == subindex {
+            break Ok(partion_point);
+        }
+        partion_point += 1;
+    }
+}
+
+pub struct OdArray<T, const N: usize> {
+    pub array: [T; N],
+}
+
+impl<T, const N: usize> OdArray<T, N> {
+    pub fn new(array: [T; N]) -> Self {
+        OdArray { array }
+    }
+}
+
+impl<T: BasicData, const N: usize> DataLink for OdArray<T, N> {
+    fn read(&self, _: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
+        if subindex == 0 {
+            const { assert!(N <= u8::MAX as usize) };
+            Ok((N as u8).into())
+        } else if let Some(variable) = self.array.get(subindex as usize - 1) {
+            Ok(variable.read())
+        } else {
+            Err(ODError::SubindexDoesNotExist)
+        }
+    }
+
+    fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+        if write_stream.subindex == 0 {
+            Err(ODError::ReadOnlyError)
+        } else if let Some(variable) = self.array.get_mut(write_stream.subindex as usize - 1) {
+            variable.write(write_stream)
+        } else {
+            Err(ODError::SubindexDoesNotExist)
         }
     }
 }

@@ -1,47 +1,34 @@
-use core::cell::Cell;
 use core::num::{NonZeroU16, NonZeroU8};
 
 use embedded_can::{ExtendedId, Id, StandardId};
 
-use crate::objectdictionary::datalink::{AtomicDataLink, ReadData, WriteStream};
-use crate::objectdictionary::{CANOpenData, ODError, ObjectDictionaryExt, Variable};
+use crate::objectdictionary::datalink::{DataLink, ReadData, WriteStream};
+use crate::objectdictionary::ODError;
 use crate::sdo::SDOAbortCode;
 use crate::NodeId;
 use crate::ObjectDictionary;
 
-pub struct TPDO<'a> {
-    od: Cell<ObjectDictionary<'a>>,
+pub struct TPDO {
     pub com: PDOCommunicationParameter,
-    pub map: TPDOMappingParameters<'a>,
+    pub map: TPDOMappingParameters,
 }
 
-impl<'a> TPDO<'a> {
+impl TPDO {
     #[inline]
-    pub fn new(com: PDOCommunicationParameter, map: TPDOMappingParameters<'a>) -> Self {
-        TPDO {
-            od: Cell::new(&[]),
-            com,
-            map,
-        }
-    }
-    #[inline]
-    pub fn set_od(&self, od: ObjectDictionary<'a>) {
-        self.od.set(od);
+    pub fn new(com: PDOCommunicationParameter, map: TPDOMappingParameters) -> Self {
+        TPDO { com, map }
     }
 
-    pub fn create_frame<F: embedded_can::Frame>(&self) -> Result<F, SDOAbortCode> {
+    pub fn create_frame<F: embedded_can::Frame, T, const N: usize>(
+        &self,
+        od: &mut ObjectDictionary<T, N>,
+    ) -> Result<F, SDOAbortCode> {
         let mut buf = [0; 8];
         let mut frame_len = 0;
-        for i in 0..self.map.num_mapped_variables.get() as usize {
-            if let Some(Variable {
-                index,
-                subindex,
-                data: CANOpenData::DataLinkRef(link),
-                ..
-            }) = self.map.map[i].get()
-            {
-                let data = link.read(*index, *subindex)?;
-                let bytes = data.get();
+        for i in 0..self.map.num_mapped_variables as usize {
+            if let Some(position) = self.map.map[i] {
+                let data = od.get(position).read(0, 0)?; //TODO index, subindex
+                let bytes = data.as_bytes();
                 buf[frame_len..frame_len + bytes.len()].copy_from_slice(bytes);
                 frame_len += bytes.len();
             }
@@ -50,7 +37,7 @@ impl<'a> TPDO<'a> {
         Ok(F::new(self.com.cob_id().id, &buf[0..frame_len]).unwrap())
     }
 
-    /// index 0x1800h to 0x19FF
+    /*    /// index 0x1800h to 0x19FF
     pub fn cob_id_variable(&self, index: u16) -> Variable<'_> {
         Variable::new_datalink_ref(index, 1, self, None)
     }
@@ -69,29 +56,29 @@ impl<'a> TPDO<'a> {
     /// index 0x1800h to 0x19FF
     pub fn sync_start_value_variable(&self, index: u16) -> Variable<'_> {
         Variable::new_datalink_ref(index, 6, self, None)
-    }
+    }*/
 }
 
-impl AtomicDataLink for TPDO<'_> {
+impl DataLink for TPDO {
     fn read(&self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
         match index {
             0x1800..=0x19FF => match subindex {
-                1 => Ok(self.com.cob_id.get().into()),
-                2 => Ok(self.com.transmission_type.get().into()),
-                3 => Ok(self.com.inhibit_time.get().into()),
-                5 => Ok(self.com.event_timer.get().into()),
-                6 => Ok(self.com.sync_start_value.get().into()),
+                1 => Ok(self.com.cob_id.into()),
+                2 => Ok(self.com.transmission_type.into()),
+                3 => Ok(self.com.inhibit_time.into()),
+                5 => Ok(self.com.event_timer.into()),
+                6 => Ok(self.com.sync_start_value.into()),
                 _ => unreachable!(),
             },
             0x1A00..=0x1BFF => match subindex {
-                0 => Ok(self.map.num_mapped_variables.get().into()),
+                0 => Ok(self.map.num_mapped_variables.into()),
                 n => Ok(self.map.get_map_data_packed(n).into()),
             },
             _ => unreachable!(),
         }
     }
 
-    fn write(&self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+    fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
         // if currently valid, the only allowed write is to the valid bit
         if self.com.cob_id().valid && (write_stream.index > 0x19FF || write_stream.subindex != 1) {
             return Err(ODError::DeviceStateError);
@@ -104,20 +91,20 @@ impl AtomicDataLink for TPDO<'_> {
                     let new_cob_id =
                         (self.com.cob_id_update_func)(self.com.cob_id(), CobId::from(new_cob_id))?;
 
-                    self.com.cob_id.set(new_cob_id.into());
+                    self.com.cob_id = new_cob_id.into();
                 }
-                2 => self.com.transmission_type.set(write_stream.try_into()?),
-                3 => self.com.inhibit_time.set(write_stream.try_into()?),
-                5 => self.com.event_timer.set(write_stream.try_into()?),
-                6 => self.com.sync_start_value.set(write_stream.try_into()?),
+                2 => self.com.transmission_type = write_stream.try_into()?,
+                3 => self.com.inhibit_time = write_stream.try_into()?,
+                5 => self.com.event_timer = write_stream.try_into()?,
+                6 => self.com.sync_start_value = write_stream.try_into()?,
                 _ => unreachable!(),
             },
             0x1A00..=0x1BFF => {
                 if write_stream.subindex == 0 {
-                    self.map.num_mapped_variables.set(write_stream.try_into()?);
+                    self.map.num_mapped_variables = write_stream.try_into()?;
                     return Ok(());
                 }
-                if self.map.num_mapped_variables.get() > 0 {
+                if self.map.num_mapped_variables > 0 {
                     // num_mapped_objects needs to be set to 0 before updating mapping
                     return Err(ODError::DeviceStateError);
                 }
@@ -157,11 +144,11 @@ pub enum DefaultTPDO {
 
 impl DefaultTPDO {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new<'a>(
+    pub fn new(
         self,
         node_id: NodeId,
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
-    ) -> TPDO<'a> {
+    ) -> TPDO {
         TPDO::new(
             PDOCommunicationParameter::new(self.cob_id(node_id, false, false), cob_id_update_func),
             TPDOMappingParameters::default(),
@@ -253,11 +240,11 @@ impl TPDOTransmissionType {
 }
 
 pub struct PDOCommunicationParameter {
-    cob_id: Cell<u32>,
-    transmission_type: Cell<u8>,
-    inhibit_time: Cell<u16>,
-    event_timer: Cell<u16>,
-    sync_start_value: Cell<u8>,
+    cob_id: u32,
+    transmission_type: u8,
+    inhibit_time: u16,
+    event_timer: u16,
+    sync_start_value: u8,
     cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
 }
 
@@ -267,40 +254,40 @@ impl PDOCommunicationParameter {
         cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
     ) -> Self {
         PDOCommunicationParameter {
-            cob_id: Cell::new(cob_id.into()),
-            transmission_type: Cell::new(0),
-            inhibit_time: Cell::new(0),
-            event_timer: Cell::new(0),
-            sync_start_value: Cell::new(0),
+            cob_id: cob_id.into(),
+            transmission_type: 0,
+            inhibit_time: 0,
+            event_timer: 0,
+            sync_start_value: 0,
             cob_id_update_func,
         }
     }
 
     pub fn cob_id(&self) -> CobId {
-        self.cob_id.get().into()
+        self.cob_id.into()
     }
 
     pub fn inhibit_time(&self) -> InhibitTime {
-        self.inhibit_time.get().into()
+        self.inhibit_time.into()
     }
 }
 
 #[derive(Default)]
-pub struct TPDOMappingParameters<'a> {
+pub struct TPDOMappingParameters {
     /// The number of valid object entries within the mapping record.
     /// The number of valid object entries shall be the number of the application objects
     /// that shall be transmitted with the corresponding TPDO.
-    num_mapped_variables: Cell<u8>,
-    map: [Cell<Option<&'a Variable<'a>>>; 8],
+    num_mapped_variables: u8,
+    map: [Option<usize>; 8],
 }
 
-impl<'a> TPDOMappingParameters<'a> {
+impl TPDOMappingParameters {
     // slot 1-8
-    pub fn map_variable(&self, slot: u8, variable: &'a Variable<'a>) -> Result<(), ODError> {
+    pub fn map_variable(&mut self, slot: u8, od_position: usize) -> Result<(), ODError> {
         match variable.pdo_size {
             Some(n) if n.get() <= 8 => {
                 // TODO check sizes, slot validity
-                self.map[slot as usize].set(Some(variable));
+                self.map[slot as usize] = Some(od_position);
                 Ok(())
             }
             _ => Err(ODError::ObjectCannotBeMapped),
@@ -309,7 +296,7 @@ impl<'a> TPDOMappingParameters<'a> {
 
     #[inline]
     pub fn get_map_data_packed(&self, num: u8) -> u32 {
-        match self.map[num as usize - 1].get() {
+        match self.map[num as usize - 1] {
             Some(variable) => pack_variable_data(
                 variable.index,
                 variable.subindex,
