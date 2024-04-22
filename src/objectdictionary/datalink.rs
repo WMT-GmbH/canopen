@@ -59,7 +59,7 @@ pub struct WriteData<'a> {
     pub is_last_segment: bool,
 }
 
-/// A read-only view of `WriteData`
+/// A read-only view of [`WriteData`]
 ///
 /// Can be directly consumed into objects that are 7 bytes or smaller.
 /// ```
@@ -80,6 +80,9 @@ pub struct WriteData<'a> {
 ///  let mut buf = [0; 256];
 ///  write_stream.write_into(&mut buf).unwrap();
 /// # }
+/// ```
+///
+/// Derefs into [`WriteData`] for more advanced use cases.
 pub struct WriteStream<'a>(pub(crate) &'a WriteData<'a>);
 
 impl<'a> Deref for WriteStream<'a> {

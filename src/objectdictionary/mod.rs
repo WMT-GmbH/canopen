@@ -40,7 +40,7 @@ impl<'a> ObjectDictionaryExt<'a> for ObjectDictionary<'a> {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ODError {
     ObjectDoesNotExist = SDOAbortCode::ObjectDoesNotExist as u32,
     OutOfMemory = SDOAbortCode::OutOfMemory as u32,

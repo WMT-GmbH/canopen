@@ -121,7 +121,7 @@ impl fmt::Display for SDOAbortCode {
 
 impl From<ODError> for SDOAbortCode {
     fn from(e: ODError) -> Self {
-        // should optimize to a no-op
+        // optimizes to a no-op, because the discriminant values are the same
         match e {
             ODError::ObjectDoesNotExist => SDOAbortCode::ObjectDoesNotExist,
             ODError::OutOfMemory => SDOAbortCode::OutOfMemory,
