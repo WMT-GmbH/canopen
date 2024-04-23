@@ -53,12 +53,23 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
     /// # Warning
     /// Using this method will unlock the object dictionary aborting any ongoing SDO transfers.
     ///
-    /// If possible you should use fields with internal mutability
-    /// and the [`ObjectDictionary::data`] method instead.
+    /// Consider using fields with internal mutability and the [`ObjectDictionary::data`] method instead.
     pub fn data_mut(&mut self) -> &mut T {
         // TODO find a way to make this more granular
         self.locked = false;
         &mut self.data
+    }
+
+    /// # Warning
+    /// Changing fields while there is an ongoing SDO transfer might corrupt it.
+    ///
+    /// Consider using fields with internal mutability and the [`ObjectDictionary::data`] method instead.
+    pub fn data_mut_no_lock(&mut self) -> &mut T {
+        &mut self.data
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.locked
     }
 
     pub fn find(&mut self, index: u16, subindex: u8) -> Result<&mut dyn DataLink, ODError> {
@@ -107,10 +118,6 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
 
     pub(crate) fn unlock(&mut self) {
         self.locked = false;
-    }
-
-    pub fn is_locked(&self) -> bool {
-        self.locked
     }
 }
 
