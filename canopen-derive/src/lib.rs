@@ -2,25 +2,44 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 
+use syn::spanned::Spanned;
 use syn::*;
 
 #[proc_macro_derive(OdData, attributes(canopen))]
 pub fn derive_interactive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as ItemStruct);
-    od_data_impl(&ast).into()
+    od_data_impl(&ast)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
 }
 
-fn od_data_impl(ast: &ItemStruct) -> TokenStream2 {
+fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
     let struct_name = &ast.ident;
 
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
-    let mut variables: Vec<_> = ast
-        .fields
-        .iter()
-        .map(|field| field_to_variables(field))
-        .flatten()
-        .collect();
+    match &ast.fields {
+        Fields::Named(_) => {}
+        _ => return Err(Error::new(ast.span(), "struct must have named fields")),
+    }
+
+    // convert fields to Variable's or collect per-field errors into on large error
+    let mut variables = ast.fields.iter().map(field_to_variables).flatten().fold(
+        Ok(Vec::new()),
+        |acc: Result<Vec<Variable>>, var| match (acc, var) {
+            (Ok(mut vec), Ok(var)) => {
+                vec.push(var);
+                Ok(vec)
+            }
+            (Err(acc_err), Ok(_)) => Err(acc_err),
+            (Err(mut acc_err), Err(e)) => {
+                acc_err.combine(e);
+                Err(acc_err)
+            }
+            (Ok(_), Err(e)) => Err(e),
+        },
+    )?;
+
     variables.sort_unstable_by_key(|a| (a.index, a.subindex));
     let od_size = variables.len();
     // TODO assert uniqueness
@@ -31,7 +50,7 @@ fn od_data_impl(ast: &ItemStruct) -> TokenStream2 {
     let pdo_sizes = variables.iter().map(|_| quote!(None));
     let idents: Vec<_> = variables.iter().map(|v| &v.ident).collect();
 
-    quote! {
+    Ok(quote! {
         impl #impl_generics ::canopen::objectdictionary::OdData for #struct_name #ty_generics #where_clause {
             type OdType = ::canopen::objectdictionary::ObjectDictionary<#struct_name, #od_size>;
 
@@ -48,7 +67,7 @@ fn od_data_impl(ast: &ItemStruct) -> TokenStream2 {
                 }
             }
         }
-    }
+    })
 }
 
 struct Variable {
@@ -57,31 +76,35 @@ struct Variable {
     ident: Ident,
 }
 
-fn field_to_variables(field: &Field) -> impl Iterator<Item = Variable> + '_ {
+fn field_to_variables(field: &Field) -> impl Iterator<Item = Result<Variable>> + '_ {
+    let ident = field.ident.as_ref().expect("field should have name");
     field.attrs.iter().filter_map(|attr| {
         if attr.path().is_ident("canopen") {
-            let mut index: Option<u16> = None;
-            let mut subindex: u8 = 0;
-            attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("index") {
-                    let val: LitInt = meta.value()?.parse()?;
-                    index = Some(val.base10_parse()?);
-                }
-                if meta.path.is_ident("subindex") {
-                    let val: LitInt = meta.value()?.parse()?;
-                    subindex = val.base10_parse()?;
-                }
-                Ok(())
-            })
-            .unwrap();
-            let index = index.expect("missing index"); // TODO spans;
-            Some(Variable {
-                index,
-                subindex,
-                ident: field.ident.clone().unwrap(),
-            })
+            Some(attr_to_variable(attr, ident.clone()))
         } else {
             None
         }
+    })
+}
+
+fn attr_to_variable(attr: &Attribute, ident: Ident) -> Result<Variable> {
+    let mut index: Option<u16> = None;
+    let mut subindex: u8 = 0;
+    attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("index") {
+            let val: LitInt = meta.value()?.parse()?;
+            index = Some(val.base10_parse()?);
+        }
+        if meta.path.is_ident("subindex") {
+            let val: LitInt = meta.value()?.parse()?;
+            subindex = val.base10_parse()?;
+        }
+        Ok(())
+    })?;
+    let index = index.ok_or(Error::new(attr.span(), "Entry must declare `index`"))?;
+    Ok(Variable {
+        index,
+        subindex,
+        ident,
     })
 }
