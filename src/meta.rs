@@ -47,10 +47,10 @@ pub struct DynMetadata<Dyn: ?Sized> {
     phantom: core::marker::PhantomData<Dyn>,
 }
 
-unsafe impl Send for DynMetadata<dyn DataLink> {}
-unsafe impl Sync for DynMetadata<dyn DataLink> {}
+unsafe impl<Dyn: ?Sized> Send for DynMetadata<Dyn> {}
+unsafe impl<Dyn: ?Sized> Sync for DynMetadata<Dyn> {}
 
-impl fmt::Debug for DynMetadata<dyn DataLink> {
+impl<Dyn: ?Sized> fmt::Debug for DynMetadata<Dyn> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("DynMetadata")
             .field(&(self.vtable_ptr as *const ()))
@@ -60,11 +60,11 @@ impl fmt::Debug for DynMetadata<dyn DataLink> {
 
 // Manual impls needed to avoid `Dyn: $Trait` bounds.
 
-impl Unpin for DynMetadata<dyn DataLink> {}
+impl<Dyn: ?Sized> Unpin for DynMetadata<Dyn> {}
 
-impl Copy for DynMetadata<dyn DataLink> {}
+impl<Dyn: ?Sized> Copy for DynMetadata<Dyn> {}
 
-impl Clone for DynMetadata<dyn DataLink> {
+impl<Dyn: ?Sized> Clone for DynMetadata<Dyn> {
     #[inline]
     fn clone(&self) -> Self {
         *self
