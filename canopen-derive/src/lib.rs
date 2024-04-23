@@ -47,7 +47,7 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
 
     let indices = variables.iter().map(|v| v.index);
     let subindices = variables.iter().map(|v| v.subindex);
-    let pdo_sizes = variables.iter().map(|_| quote!(None));
+    let flags = variables.iter().map(Variable::flags);
     let idents: Vec<_> = variables.iter().map(|v| &v.ident).collect();
 
     Ok(quote! {
@@ -59,7 +59,7 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
                     ::canopen::objectdictionary::ObjectDictionary::new(
                         [#(#indices),*],
                         [#(#subindices),*],
-                        [#(#pdo_sizes),*],
+                        [#(#flags),*],
                         [#(::core::mem::offset_of!(#struct_name, #idents)),*],
                         [#(::canopen::meta::metadata(&self.#idents as &dyn ::canopen::objectdictionary::datalink::DataLink)),*],
                         self,
@@ -73,7 +73,22 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
 struct Variable {
     index: u16,
     subindex: u8,
+    read_only: bool,
+    write_only: bool,
     ident: Ident,
+}
+
+impl Variable {
+    fn flags(&self) -> TokenStream2 {
+        let mut flags = quote!(::canopen::objectdictionary::variable::VariableFlags::empty());
+        if self.read_only {
+            flags = quote!(#flags.set_read_only());
+        }
+        if self.write_only {
+            flags = quote!(#flags.set_write_only());
+        }
+        flags
+    }
 }
 
 fn field_to_variables(field: &Field) -> impl Iterator<Item = Result<Variable>> + '_ {
@@ -90,6 +105,8 @@ fn field_to_variables(field: &Field) -> impl Iterator<Item = Result<Variable>> +
 fn attr_to_variable(attr: &Attribute, ident: Ident) -> Result<Variable> {
     let mut index: Option<u16> = None;
     let mut subindex: u8 = 0;
+    let mut read_only = false;
+    let mut write_only = false;
     attr.parse_nested_meta(|meta| {
         if meta.path.is_ident("index") {
             let val: LitInt = meta.value()?.parse()?;
@@ -99,12 +116,20 @@ fn attr_to_variable(attr: &Attribute, ident: Ident) -> Result<Variable> {
             let val: LitInt = meta.value()?.parse()?;
             subindex = val.base10_parse()?;
         }
+        if meta.path.is_ident("read_only") {
+            read_only = true;
+        }
+        if meta.path.is_ident("write_only") {
+            write_only = true;
+        }
         Ok(())
     })?;
     let index = index.ok_or(Error::new(attr.span(), "Entry must declare `index`"))?;
     Ok(Variable {
         index,
         subindex,
+        read_only,
+        write_only,
         ident,
     })
 }

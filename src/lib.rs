@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(inline_const)]
 
 use embedded_can::{Id, StandardId};
 
@@ -13,7 +12,7 @@ pub mod lss;
 pub mod meta;
 pub mod nmt;
 pub mod objectdictionary;
-// pub mod pdo;
+pub mod pdo;
 pub mod sdo;
 
 pub trait CanOpenService<F: embedded_can::Frame, T, const N: usize> {

@@ -1,15 +1,18 @@
-use core::num::{NonZeroU16, NonZeroU8};
+use core::num::NonZeroU16;
 
 use embedded_can::{ExtendedId, Id, StandardId};
 
 use crate::objectdictionary::datalink::{DataLink, ReadData, WriteStream};
-use crate::objectdictionary::ODError;
+use crate::objectdictionary::variable::{PdoSize, VariableInfo};
+use crate::objectdictionary::{ODError, OdInfo};
 use crate::sdo::SDOAbortCode;
 use crate::NodeId;
 use crate::ObjectDictionary;
 
 pub struct TPDO {
+    /// index 0x1800h to 0x19FF
     pub com: PDOCommunicationParameter,
+    /// index 0x1A00 to 0x1BFF
     pub map: TPDOMappingParameters,
 }
 
@@ -26,8 +29,8 @@ impl TPDO {
         let mut buf = [0; 8];
         let mut frame_len = 0;
         for i in 0..self.map.num_mapped_variables as usize {
-            if let Some(position) = self.map.map[i] {
-                let data = od.get(position).read(0, 0)?; //TODO index, subindex
+            if let Some(info) = &self.map.map[i] {
+                let data = od.get(info.od_position).read(0, 0)?; //TODO index, subindex
                 let bytes = data.as_bytes();
                 buf[frame_len..frame_len + bytes.len()].copy_from_slice(bytes);
                 frame_len += bytes.len();
@@ -36,27 +39,6 @@ impl TPDO {
 
         Ok(F::new(self.com.cob_id().id, &buf[0..frame_len]).unwrap())
     }
-
-    /*    /// index 0x1800h to 0x19FF
-    pub fn cob_id_variable(&self, index: u16) -> Variable<'_> {
-        Variable::new_datalink_ref(index, 1, self, None)
-    }
-    /// index 0x1800h to 0x19FF
-    pub fn transmission_type_variable(&self, index: u16) -> Variable<'_> {
-        Variable::new_datalink_ref(index, 2, self, None)
-    }
-    /// index 0x1800h to 0x19FF
-    pub fn inhibit_time_variable(&self, index: u16) -> Variable<'_> {
-        Variable::new_datalink_ref(index, 3, self, None)
-    }
-    /// index 0x1800h to 0x19FF
-    pub fn event_timer_variable(&self, index: u16) -> Variable<'_> {
-        Variable::new_datalink_ref(index, 5, self, None)
-    }
-    /// index 0x1800h to 0x19FF
-    pub fn sync_start_value_variable(&self, index: u16) -> Variable<'_> {
-        Variable::new_datalink_ref(index, 6, self, None)
-    }*/
 }
 
 impl DataLink for TPDO {
@@ -78,7 +60,7 @@ impl DataLink for TPDO {
         }
     }
 
-    fn write(&mut self, write_stream: WriteStream<'_>) -> Result<(), ODError> {
+    fn write(&mut self, write_stream: WriteStream<'_>, od_info: OdInfo) -> Result<(), ODError> {
         // if currently valid, the only allowed write is to the valid bit
         if self.com.cob_id().valid && (write_stream.index > 0x19FF || write_stream.subindex != 1) {
             return Err(ODError::DeviceStateError);
@@ -108,22 +90,13 @@ impl DataLink for TPDO {
                     // num_mapped_objects needs to be set to 0 before updating mapping
                     return Err(ODError::DeviceStateError);
                 }
-                if let Ok(data) = write_stream.new_data.try_into() {
-                    let data = <u32>::from_le_bytes(data);
+                let map_slot = write_stream.subindex as usize - 1;
+                if let Ok(data) = write_stream.try_into() {
                     let (index, subindex, num_bits) = unpack_variable_data(data);
 
-                    return match self.od.get().find(index, subindex) {
-                        Ok(variable) => {
-                            // validate num_bits
-                            if num_bits % 8 != 0
-                                || NonZeroU8::new(num_bits / 8) != variable.pdo_size
-                            {
-                                return Err(ODError::ObjectCannotBeMapped);
-                            }
-
-                            self.map.map_variable(write_stream.subindex, variable)
-                        }
-                        Err(_) => return Err(ODError::ObjectDoesNotExist),
+                    return match od_info.find(index, subindex) {
+                        Some(info) => self.map.map_variable(map_slot, info, num_bits),
+                        None => return Err(ODError::ObjectDoesNotExist),
                     };
                 }
             }
@@ -240,10 +213,15 @@ impl TPDOTransmissionType {
 }
 
 pub struct PDOCommunicationParameter {
+    /// subindex 1
     cob_id: u32,
+    /// subindex 2
     transmission_type: u8,
+    /// subindex 3
     inhibit_time: u16,
+    /// subindex 5
     event_timer: u16,
+    /// subindex 6
     sync_start_value: u8,
     cob_id_update_func: fn(CobId, CobId) -> Result<CobId, InvalidCobId>,
 }
@@ -278,16 +256,25 @@ pub struct TPDOMappingParameters {
     /// The number of valid object entries shall be the number of the application objects
     /// that shall be transmitted with the corresponding TPDO.
     num_mapped_variables: u8,
-    map: [Option<usize>; 8],
+    map: [Option<VariableInfo>; 8],
 }
 
 impl TPDOMappingParameters {
     // slot 1-8
-    pub fn map_variable(&mut self, slot: u8, od_position: usize) -> Result<(), ODError> {
-        match variable.pdo_size {
+    pub fn map_variable(
+        &mut self,
+        slot: usize,
+        info: VariableInfo,
+        num_bits: u8,
+    ) -> Result<(), ODError> {
+        // validate num_bits
+        if num_bits % 8 != 0 || PdoSize::new(num_bits / 8) != info.flags.pdo_size() {
+            return Err(ODError::ObjectCannotBeMapped);
+        }
+        match info.flags.pdo_size() {
             Some(n) if n.get() <= 8 => {
                 // TODO check sizes, slot validity
-                self.map[slot as usize] = Some(od_position);
+                self.map[slot] = Some(info);
                 Ok(())
             }
             _ => Err(ODError::ObjectCannotBeMapped),
@@ -296,11 +283,11 @@ impl TPDOMappingParameters {
 
     #[inline]
     pub fn get_map_data_packed(&self, num: u8) -> u32 {
-        match self.map[num as usize - 1] {
-            Some(variable) => pack_variable_data(
-                variable.index,
-                variable.subindex,
-                variable.pdo_size.unwrap().get() * 8,
+        match &self.map[num as usize - 1] {
+            Some(info) => pack_variable_data(
+                info.index,
+                info.subindex,
+                info.flags.pdo_size().unwrap().get() * 8,
             ),
             None => 0,
         }
