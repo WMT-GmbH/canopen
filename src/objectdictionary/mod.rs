@@ -145,11 +145,11 @@ impl<T, const N: usize> OdArray<T, N> {
 }
 
 impl<T: BasicData, const N: usize> BasicData for OdArray<T, N> {
-    fn read(&self, index: u16, subindex: u8) -> Result<BasicReadData, ODError> {
+    fn read(&mut self, index: u16, subindex: u8) -> Result<BasicReadData, ODError> {
         if subindex == 0 {
             assert!(N <= u8::MAX as usize); // TODO inline const
             Ok((N as u8).into())
-        } else if let Some(object) = self.array.get(subindex as usize - 1) {
+        } else if let Some(object) = self.array.get_mut(subindex as usize - 1) {
             object.read(index, subindex)
         } else {
             Err(ODError::SubindexDoesNotExist)

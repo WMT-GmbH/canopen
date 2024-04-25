@@ -42,7 +42,7 @@ impl TPDO {
 }
 
 impl BasicData for TPDO {
-    fn read(&self, index: u16, subindex: u8) -> Result<BasicReadData, ODError> {
+    fn read(&mut self, index: u16, subindex: u8) -> Result<BasicReadData, ODError> {
         match index {
             0x1800..=0x19FF => match subindex {
                 1 => Ok(self.com.cob_id.into()),

@@ -18,12 +18,12 @@ mod private {
     note = "`{Self}` must either implement `BasicData` or be wrapped in `OdCell`"
 )]*/
 pub trait DataLink: private::Sealed {
-    fn read(&self, index: u16, subindex: u8) -> Result<ReadData, ODError>;
+    fn read(&mut self, index: u16, subindex: u8) -> Result<ReadData, ODError>;
     fn write(&mut self, data: &WriteData, od_info: OdInfo) -> Result<(), ODError>;
 }
 
 pub trait BasicData {
-    fn read(&self, index: u16, subindex: u8) -> Result<BasicReadData, ODError>;
+    fn read(&mut self, index: u16, subindex: u8) -> Result<BasicReadData, ODError>;
     fn write(&mut self, data: BasicWriteData, od_info: OdInfo) -> Result<(), ODError>;
 }
 
@@ -33,7 +33,7 @@ pub trait CustomData {
 }
 
 impl<T: BasicData> DataLink for T {
-    fn read(&self, index: u16, subindex: u8) -> Result<ReadData, ODError> {
+    fn read(&mut self, index: u16, subindex: u8) -> Result<ReadData, ODError> {
         Ok(BasicData::read(self, index, subindex)?.into())
     }
 
@@ -45,7 +45,7 @@ impl<T: BasicData> DataLink for T {
 macro_rules! basic_data {
     ($typ:ty) => {
         impl BasicData for $typ {
-            fn read(&self, _: u16, _: u8) -> Result<BasicReadData, ODError> {
+            fn read(&mut self, _: u16, _: u8) -> Result<BasicReadData, ODError> {
                 Ok(BasicReadData::from(*self))
             }
 
@@ -67,7 +67,7 @@ basic_data!(u32);
 basic_data!(f32);
 
 impl DataLink for &str {
-    fn read(&self, _: u16, _: u8) -> Result<ReadData, ODError> {
+    fn read(&mut self, _: u16, _: u8) -> Result<ReadData, ODError> {
         Ok(ReadData::Bytes(self.as_bytes()))
     }
 
@@ -77,7 +77,7 @@ impl DataLink for &str {
 }
 
 impl DataLink for &[u8] {
-    fn read(&self, _: u16, _: u8) -> Result<ReadData, ODError> {
+    fn read(&mut self, _: u16, _: u8) -> Result<ReadData, ODError> {
         Ok(ReadData::Bytes(self))
     }
 
@@ -87,7 +87,7 @@ impl DataLink for &[u8] {
 }
 
 impl<T: CustomData> DataLink for OdCell<T> {
-    fn read(&self, index: u16, subindex: u8) -> Result<ReadData, ODError> {
+    fn read(&mut self, index: u16, subindex: u8) -> Result<ReadData, ODError> {
         // TODO locking
         CustomData::read(self.get(), index, subindex)
     }
