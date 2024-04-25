@@ -52,7 +52,7 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
 
     Ok(quote! {
         impl #impl_generics ::canopen::objectdictionary::OdData for #struct_name #ty_generics #where_clause {
-            type OdType = ::canopen::objectdictionary::ObjectDictionary<#struct_name, #od_size>;
+            type OdType = ::canopen::objectdictionary::ObjectDictionary<#struct_name #ty_generics, #od_size>;
 
             fn into_od(self) -> Self::OdType {
                 unsafe {
@@ -60,7 +60,7 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
                         [#(#indices),*],
                         [#(#subindices),*],
                         [#(#flags),*],
-                        [#(::core::mem::offset_of!(#struct_name, #idents)),*],
+                        [#(::core::mem::offset_of!(#struct_name #ty_generics, #idents)),*],
                         [#(::canopen::meta::metadata(&self.#idents as &dyn ::canopen::objectdictionary::datalink::DataLink)),*],
                         self,
                     )
