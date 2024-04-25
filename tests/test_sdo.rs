@@ -1,5 +1,6 @@
 use embedded_can::Frame;
 
+use canopen::objectdictionary::od_cell::OdCell;
 use canopen::objectdictionary::OdData;
 use canopen::sdo::SdoServer;
 use canopen::{CanOpenService, NodeId};
@@ -17,14 +18,14 @@ fn test_expedited_download() {
     #[derive(OdData)]
     struct Data {
         #[canopen(index = 1)]
-        obj_1: [u8; 4],
+        obj_1: OdCell<[u8; 4]>,
         #[canopen(index = 2)]
-        obj_2: [u8; 3],
+        obj_2: OdCell<[u8; 3]>,
     }
 
     let mut od = Data {
-        obj_1: [0; 4],
-        obj_2: [0; 3],
+        obj_1: OdCell::new([0; 4]),
+        obj_2: OdCell::new([0; 3]),
     }
     .into_od();
 
@@ -50,8 +51,8 @@ fn test_expedited_download() {
         [0x60, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
-    assert_eq!(od.data().obj_1.as_slice(), &[1, 2, 3, 4]);
-    assert_eq!(od.data().obj_2.as_slice(), &[1, 2, 3]);
+    assert_eq!(od.data.obj_1.get().as_slice(), &[1, 2, 3, 4]);
+    assert_eq!(od.data.obj_2.get().as_slice(), &[1, 2, 3]);
 }
 
 #[test]
@@ -59,10 +60,13 @@ fn test_segmented_download() {
     #[derive(OdData)]
     struct Data {
         #[canopen(index = 1)]
-        obj: [u8; 13],
+        obj: OdCell<[u8; 13]>,
     }
 
-    let mut od = Data { obj: [0; 13] }.into_od();
+    let mut od = Data {
+        obj: OdCell::new([0; 13]),
+    }
+    .into_od();
 
     let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
 
@@ -98,7 +102,7 @@ fn test_segmented_download() {
         [0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
-    assert_eq!(od.data().obj.as_slice(), b"A long string");
+    assert_eq!(od.data.obj.get().as_slice(), b"A long string");
 }
 
 #[test]
@@ -129,11 +133,11 @@ fn test_segmented_upload() {
     #[derive(OdData)]
     struct Data {
         #[canopen(index = 1)]
-        obj: [u8; 9],
+        obj: OdCell<[u8; 9]>,
     }
 
     let mut od = Data {
-        obj: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+        obj: OdCell::new([1, 2, 3, 4, 5, 6, 7, 8, 9]),
     }
     .into_od();
 
@@ -169,8 +173,6 @@ fn test_segmented_upload() {
     );
 }
 
-/*
-TODO
 #[test]
 fn test_segmented_upload_with_known_size() {
     #[derive(OdData)]
@@ -215,7 +217,7 @@ fn test_segmented_upload_with_known_size() {
         [0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]
     );
 }
-*/
+
 #[test]
 fn test_abort() {
     #[derive(OdData)]

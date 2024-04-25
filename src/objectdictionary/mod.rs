@@ -1,9 +1,12 @@
 use crate::meta::{from_raw_parts_mut, DynMetadata};
-use crate::objectdictionary::datalink::{BasicData, DataLink, ReadData, WriteStream};
+use crate::objectdictionary::datalink::{
+    BasicData, BasicReadData, BasicWriteData, DataLink, ReadData,
+};
 
 use crate::sdo::SDOAbortCode;
 
 pub mod datalink;
+pub mod od_cell;
 pub mod variable;
 
 use crate::objectdictionary::variable::{VariableFlags, VariableInfo};
@@ -21,8 +24,7 @@ pub struct ObjectDictionary<T, const N: usize> {
     pdo_sizes: [VariableFlags; N],
     offsets: [usize; N],
     vtables: [DynMetadata<dyn DataLink>; N],
-    locked: bool,
-    data: T,
+    pub data: T,
 }
 
 impl<T, const N: usize> ObjectDictionary<T, N> {
@@ -41,35 +43,8 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
             pdo_sizes,
             offsets,
             vtables,
-            locked: false,
             data,
         }
-    }
-
-    pub fn data(&self) -> &T {
-        &self.data
-    }
-
-    /// # Warning
-    /// Using this method will unlock the object dictionary aborting any ongoing SDO transfers.
-    ///
-    /// Consider using fields with internal mutability and the [`ObjectDictionary::data`] method instead.
-    pub fn data_mut(&mut self) -> &mut T {
-        // TODO find a way to make this more granular
-        self.locked = false;
-        &mut self.data
-    }
-
-    /// # Warning
-    /// Changing fields while there is an ongoing SDO transfer might corrupt it.
-    ///
-    /// Consider using fields with internal mutability and the [`ObjectDictionary::data`] method instead.
-    pub fn data_mut_no_lock(&mut self) -> &mut T {
-        &mut self.data
-    }
-
-    pub fn is_locked(&self) -> bool {
-        self.locked
     }
 
     pub fn find(&mut self, index: u16, subindex: u8) -> Result<&mut dyn DataLink, ODError> {
@@ -77,7 +52,7 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
         Ok(self.get(position))
     }
 
-    pub fn read(&mut self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
+    pub fn read(&mut self, index: u16, subindex: u8) -> Result<ReadData, ODError> {
         self.find(index, subindex)?.read(index, subindex)
     }
 
@@ -110,14 +85,6 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
 
     pub(crate) fn search(&self, index: u16, subindex: u8) -> Result<OdPosition, ODError> {
         od_search(&self.indices, &self.subindices, index, subindex)
-    }
-
-    pub(crate) fn lock(&mut self) {
-        self.locked = true;
-    }
-
-    pub(crate) fn unlock(&mut self) {
-        self.locked = false;
     }
 }
 
@@ -177,23 +144,23 @@ impl<T, const N: usize> OdArray<T, N> {
     }
 }
 
-impl<T: BasicData, const N: usize> DataLink for OdArray<T, N> {
-    fn read(&self, _: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
+impl<T: BasicData, const N: usize> BasicData for OdArray<T, N> {
+    fn read(&self, index: u16, subindex: u8) -> Result<BasicReadData, ODError> {
         if subindex == 0 {
             assert!(N <= u8::MAX as usize); // TODO inline const
             Ok((N as u8).into())
         } else if let Some(variable) = self.array.get(subindex as usize - 1) {
-            Ok(variable.read().into())
+            variable.read(index, subindex)
         } else {
             Err(ODError::SubindexDoesNotExist)
         }
     }
 
-    fn write(&mut self, write_stream: WriteStream<'_>, _: OdInfo<'_>) -> Result<(), ODError> {
-        if write_stream.subindex == 0 {
+    fn write(&mut self, data: BasicWriteData, od_info: OdInfo) -> Result<(), ODError> {
+        if data.subindex() == 0 {
             Err(ODError::ReadOnlyError)
-        } else if let Some(variable) = self.array.get_mut(write_stream.subindex as usize - 1) {
-            variable.write(write_stream)
+        } else if let Some(variable) = self.array.get_mut(data.subindex() as usize - 1) {
+            variable.write(data, od_info)
         } else {
             Err(ODError::SubindexDoesNotExist)
         }

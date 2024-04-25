@@ -2,7 +2,7 @@ use core::num::NonZeroU16;
 
 use embedded_can::{ExtendedId, Id, StandardId};
 
-use crate::objectdictionary::datalink::{DataLink, ReadData, WriteStream};
+use crate::objectdictionary::datalink::{BasicData, BasicReadData, BasicWriteData};
 use crate::objectdictionary::variable::{PdoSize, VariableInfo};
 use crate::objectdictionary::{ODError, OdInfo};
 use crate::sdo::SDOAbortCode;
@@ -30,7 +30,7 @@ impl TPDO {
         let mut frame_len = 0;
         for i in 0..self.map.num_mapped_variables as usize {
             if let Some(info) = &self.map.map[i] {
-                let data = od.get(info.od_position).read(0, 0)?; //TODO index, subindex
+                let data = od.get(info.od_position).read(info.index, info.subindex)?;
                 let bytes = data.as_bytes();
                 buf[frame_len..frame_len + bytes.len()].copy_from_slice(bytes);
                 frame_len += bytes.len();
@@ -41,8 +41,8 @@ impl TPDO {
     }
 }
 
-impl DataLink for TPDO {
-    fn read(&self, index: u16, subindex: u8) -> Result<ReadData<'_>, ODError> {
+impl BasicData for TPDO {
+    fn read(&self, index: u16, subindex: u8) -> Result<BasicReadData, ODError> {
         match index {
             0x1800..=0x19FF => match subindex {
                 1 => Ok(self.com.cob_id.into()),
@@ -60,38 +60,38 @@ impl DataLink for TPDO {
         }
     }
 
-    fn write(&mut self, write_stream: WriteStream<'_>, od_info: OdInfo) -> Result<(), ODError> {
+    fn write(&mut self, data: BasicWriteData, od_info: OdInfo) -> Result<(), ODError> {
         // if currently valid, the only allowed write is to the valid bit
-        if self.com.cob_id().valid && (write_stream.index > 0x19FF || write_stream.subindex != 1) {
+        if self.com.cob_id().valid && (data.index() > 0x19FF || data.subindex() != 1) {
             return Err(ODError::DeviceStateError);
         }
 
-        match write_stream.index {
-            0x1800..=0x19FF => match write_stream.subindex {
+        match data.index() {
+            0x1800..=0x19FF => match data.subindex() {
                 1 => {
-                    let new_cob_id = u32::try_from(write_stream)?;
+                    let new_cob_id = u32::try_from(data)?;
                     let new_cob_id =
                         (self.com.cob_id_update_func)(self.com.cob_id(), CobId::from(new_cob_id))?;
 
                     self.com.cob_id = new_cob_id.into();
                 }
-                2 => self.com.transmission_type = write_stream.try_into()?,
-                3 => self.com.inhibit_time = write_stream.try_into()?,
-                5 => self.com.event_timer = write_stream.try_into()?,
-                6 => self.com.sync_start_value = write_stream.try_into()?,
+                2 => self.com.transmission_type = data.try_into()?,
+                3 => self.com.inhibit_time = data.try_into()?,
+                5 => self.com.event_timer = data.try_into()?,
+                6 => self.com.sync_start_value = data.try_into()?,
                 _ => unreachable!(),
             },
             0x1A00..=0x1BFF => {
-                if write_stream.subindex == 0 {
-                    self.map.num_mapped_variables = write_stream.try_into()?;
+                if data.subindex() == 0 {
+                    self.map.num_mapped_variables = data.try_into()?;
                     return Ok(());
                 }
                 if self.map.num_mapped_variables > 0 {
                     // num_mapped_objects needs to be set to 0 before updating mapping
                     return Err(ODError::DeviceStateError);
                 }
-                let map_slot = write_stream.subindex as usize - 1;
-                if let Ok(data) = write_stream.try_into() {
+                let map_slot = data.subindex() as usize - 1;
+                if let Ok(data) = data.try_into() {
                     let (index, subindex, num_bits) = unpack_variable_data(data);
 
                     return match od_info.find(index, subindex) {
