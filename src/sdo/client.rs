@@ -26,6 +26,16 @@ pub fn download_request<T: SdoValue>(index: u16, sub_index: u8, val: T) -> [u8; 
     request
 }
 
+pub fn segmented_upload_request(toggle_bit: bool) -> [u8; 8] {
+    let mut request = [0; 8];
+    request[0] = if toggle_bit {
+        REQUEST_SEGMENT_UPLOAD | TOGGLE_BIT
+    } else {
+        REQUEST_SEGMENT_UPLOAD
+    };
+    request
+}
+
 pub fn parse_upload_response<T: SdoValue>(
     response: &[u8; 8],
     expected_index: u16,

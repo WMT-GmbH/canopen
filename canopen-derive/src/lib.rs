@@ -1,7 +1,8 @@
 use proc_macro::TokenStream;
+use std::collections::BTreeSet;
+
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-
 use syn::spanned::Spanned;
 use syn::*;
 
@@ -23,10 +24,10 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
         _ => return Err(Error::new(ast.span(), "struct must have named fields")),
     }
 
-    // convert fields to Variable's or collect per-field errors into on large error
-    let mut variables = ast.fields.iter().map(field_to_variables).flatten().fold(
+    // convert fields to Objects's or collect per-field errors into on large error
+    let mut objects = ast.fields.iter().map(field_to_objects).flatten().fold(
         Ok(Vec::new()),
-        |acc: Result<Vec<Variable>>, var| match (acc, var) {
+        |acc: Result<Vec<Object>>, var| match (acc, var) {
             (Ok(mut vec), Ok(var)) => {
                 vec.push(var);
                 Ok(vec)
@@ -40,15 +41,14 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
         },
     )?;
 
-    variables.sort_unstable_by_key(|a| (a.index, a.subindex));
-    let od_size = variables.len();
-    // TODO assert uniqueness
-    // TODO assert every field is a variable
+    objects.sort_unstable_by_key(|a| (a.index, a.subindex));
+    let od_size = objects.len();
+    check_for_duplicates(&objects)?;
 
-    let indices = variables.iter().map(|v| v.index);
-    let subindices = variables.iter().map(|v| v.subindex);
-    let flags = variables.iter().map(Variable::flags);
-    let idents: Vec<_> = variables.iter().map(|v| &v.ident).collect();
+    let indices = objects.iter().map(|v| v.index);
+    let subindices = objects.iter().map(|v| v.subindex);
+    let flags = objects.iter().map(Object::flags);
+    let idents: Vec<_> = objects.iter().map(|v| &v.ident).collect();
 
     Ok(quote! {
         impl #impl_generics ::canopen::objectdictionary::OdData for #struct_name #ty_generics #where_clause {
@@ -70,7 +70,8 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
     })
 }
 
-struct Variable {
+#[derive(Eq)]
+struct Object {
     index: u16,
     subindex: u8,
     read_only: bool,
@@ -78,9 +79,9 @@ struct Variable {
     ident: Ident,
 }
 
-impl Variable {
+impl Object {
     fn flags(&self) -> TokenStream2 {
-        let mut flags = quote!(::canopen::objectdictionary::variable::VariableFlags::empty());
+        let mut flags = quote!(::canopen::objectdictionary::object::ObjectFlags::empty());
         if self.read_only {
             flags = quote!(#flags.set_read_only());
         }
@@ -91,18 +92,50 @@ impl Variable {
     }
 }
 
-fn field_to_variables(field: &Field) -> impl Iterator<Item = Result<Variable>> + '_ {
-    let ident = field.ident.as_ref().expect("field should have name");
-    field.attrs.iter().filter_map(|attr| {
-        if attr.path().is_ident("canopen") {
-            Some(attr_to_variable(attr, ident.clone()))
-        } else {
-            None
-        }
-    })
+impl Ord for Object {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.index
+            .cmp(&other.index)
+            .then_with(|| self.subindex.cmp(&other.subindex))
+    }
 }
 
-fn attr_to_variable(attr: &Attribute, ident: Ident) -> Result<Variable> {
+impl PartialOrd for Object {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Object {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.subindex == other.subindex
+    }
+}
+
+fn field_to_objects(field: &Field) -> Vec<Result<Object>> {
+    let ident = field.ident.as_ref().expect("field should have name");
+    let objects: Vec<_> = field
+        .attrs
+        .iter()
+        .filter_map(|attr| {
+            if attr.path().is_ident("canopen") {
+                Some(attr_to_object(attr, ident.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if objects.is_empty() {
+        vec![Err(Error::new(
+            field.span(),
+            "field must have #[canopen()] attribute",
+        ))]
+    } else {
+        objects
+    }
+}
+
+fn attr_to_object(attr: &Attribute, ident: Ident) -> Result<Object> {
     let mut index: Option<u16> = None;
     let mut subindex: u8 = 0;
     let mut read_only = false;
@@ -117,19 +150,67 @@ fn attr_to_variable(attr: &Attribute, ident: Ident) -> Result<Variable> {
             subindex = val.base10_parse()?;
         }
         if meta.path.is_ident("read_only") {
+            if write_only {
+                return Err(Error::new(
+                    attr.span(),
+                    "Object cannot be both read-only and write-only",
+                ));
+            }
             read_only = true;
         }
         if meta.path.is_ident("write_only") {
+            if read_only {
+                return Err(Error::new(
+                    attr.span(),
+                    "Object cannot be both read-only and write-only",
+                ));
+            }
             write_only = true;
         }
         Ok(())
     })?;
-    let index = index.ok_or(Error::new(attr.span(), "Entry must declare `index`"))?;
-    Ok(Variable {
+    let index = index.ok_or(Error::new(attr.span(), "Object must declare `index`"))?;
+    Ok(Object {
         index,
         subindex,
         read_only,
         write_only,
         ident,
     })
+}
+
+// expects objects to be sorted
+fn check_for_duplicates(objects: &[Object]) -> Result<()> {
+    let Some((first, rest)) = objects.split_first() else {
+        return Ok(());
+    };
+
+    let mut duplicates = BTreeSet::new();
+    let mut last_object = first;
+    for object in rest {
+        if object.index == last_object.index && object.subindex == last_object.subindex {
+            duplicates.insert(last_object);
+            duplicates.insert(object);
+        } else {
+            last_object = object;
+        }
+    }
+
+    if let Some(e) = duplicates
+        .into_iter()
+        .map(|object| {
+            Error::new(
+                object.ident.span(),
+                "Duplicate index and subindex combination",
+            )
+        })
+        .reduce(|mut acc, e| {
+            acc.combine(e);
+            acc
+        })
+    {
+        Err(e)
+    } else {
+        Ok(())
+    }
 }

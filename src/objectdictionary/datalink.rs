@@ -14,7 +14,9 @@ mod private {
     impl<T> Sealed for OdCell<T> {}
 }
 
-// TODO #[diagnostics::on_unimplemented]
+#[diagnostic::on_unimplemented(
+    note = "`{Self}` must either implement `BasicData` or be wrapped in `OdCell`"
+)]
 pub trait DataLink: private::Sealed {
     fn read(&self, index: u16, subindex: u8) -> Result<ReadData, ODError>;
     fn write(&mut self, data: &WriteData, od_info: OdInfo) -> Result<(), ODError>;

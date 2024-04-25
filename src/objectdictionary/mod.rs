@@ -6,10 +6,10 @@ use crate::objectdictionary::datalink::{
 use crate::sdo::SDOAbortCode;
 
 pub mod datalink;
+pub mod object;
 pub mod od_cell;
-pub mod variable;
 
-use crate::objectdictionary::variable::{VariableFlags, VariableInfo};
+use crate::objectdictionary::object::{ObjectFlags, ObjectInfo};
 pub use canopen_derive::OdData;
 
 pub trait OdData {
@@ -21,7 +21,7 @@ pub trait OdData {
 pub struct ObjectDictionary<T, const N: usize> {
     indices: [u16; N],
     subindices: [u8; N],
-    pdo_sizes: [VariableFlags; N],
+    pdo_sizes: [ObjectFlags; N],
     offsets: [usize; N],
     vtables: [DynMetadata<dyn DataLink>; N],
     pub data: T,
@@ -32,7 +32,7 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
     pub unsafe fn new(
         indices: [u16; N],
         subindices: [u8; N],
-        pdo_sizes: [VariableFlags; N],
+        pdo_sizes: [ObjectFlags; N],
         offsets: [usize; N],
         vtables: [DynMetadata<dyn DataLink>; N],
         data: T,
@@ -78,7 +78,7 @@ impl<T, const N: usize> ObjectDictionary<T, N> {
             OdInfo {
                 indices: &self.indices,
                 subindices: &self.subindices,
-                variable_flags: &self.pdo_sizes,
+                object_flags: &self.pdo_sizes,
             },
         )
     }
@@ -94,20 +94,20 @@ pub struct OdPosition(pub usize);
 pub struct OdInfo<'a> {
     indices: &'a [u16],
     subindices: &'a [u8],
-    variable_flags: &'a [VariableFlags],
+    object_flags: &'a [ObjectFlags],
 }
 
 impl OdInfo<'_> {
-    pub fn get(&self, position: OdPosition) -> VariableInfo {
-        VariableInfo {
+    pub fn get(&self, position: OdPosition) -> ObjectInfo {
+        ObjectInfo {
             index: self.indices[position.0],
             subindex: self.subindices[position.0],
-            flags: self.variable_flags[position.0],
+            flags: self.object_flags[position.0],
             od_position: position,
         }
     }
 
-    pub fn find(&self, index: u16, subindex: u8) -> Option<VariableInfo> {
+    pub fn find(&self, index: u16, subindex: u8) -> Option<ObjectInfo> {
         let position = od_search(self.indices, self.subindices, index, subindex).ok()?;
         Some(self.get(position))
     }
@@ -149,8 +149,8 @@ impl<T: BasicData, const N: usize> BasicData for OdArray<T, N> {
         if subindex == 0 {
             assert!(N <= u8::MAX as usize); // TODO inline const
             Ok((N as u8).into())
-        } else if let Some(variable) = self.array.get(subindex as usize - 1) {
-            variable.read(index, subindex)
+        } else if let Some(object) = self.array.get(subindex as usize - 1) {
+            object.read(index, subindex)
         } else {
             Err(ODError::SubindexDoesNotExist)
         }
@@ -159,8 +159,8 @@ impl<T: BasicData, const N: usize> BasicData for OdArray<T, N> {
     fn write(&mut self, data: BasicWriteData, od_info: OdInfo) -> Result<(), ODError> {
         if data.subindex() == 0 {
             Err(ODError::ReadOnlyError)
-        } else if let Some(variable) = self.array.get_mut(data.subindex() as usize - 1) {
-            variable.write(data, od_info)
+        } else if let Some(object) = self.array.get_mut(data.subindex() as usize - 1) {
+            object.write(data, od_info)
         } else {
             Err(ODError::SubindexDoesNotExist)
         }

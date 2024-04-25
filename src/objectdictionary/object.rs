@@ -1,27 +1,27 @@
 use crate::objectdictionary::OdPosition;
 
 #[derive(Clone, Debug)]
-pub struct VariableInfo {
+pub struct ObjectInfo {
     pub index: u16,
     pub subindex: u8,
-    pub flags: VariableFlags,
+    pub flags: ObjectFlags,
     pub od_position: OdPosition,
 }
 
 #[derive(Clone, Copy)]
-pub struct VariableFlags(u8);
+pub struct ObjectFlags(u8);
 
-impl VariableFlags {
+impl ObjectFlags {
     const READ_ONLY_FLAG: u8 = 0b0001_0000;
     const WRITE_ONLY_FLAG: u8 = 0b0010_0000;
 
     pub const fn empty() -> Self {
-        VariableFlags(0)
+        ObjectFlags(0)
     }
     pub const fn set_read_only(mut self) -> Self {
         assert!(
             !self.is_write_only(),
-            "Variable cannot be both read-only and write-only"
+            "Object cannot be both read-only and write-only"
         );
         self.0 |= Self::READ_ONLY_FLAG;
         self
@@ -29,7 +29,7 @@ impl VariableFlags {
     pub const fn set_write_only(mut self) -> Self {
         assert!(
             !self.is_read_only(),
-            "Variable cannot be both read-only and write-only"
+            "Object cannot be both read-only and write-only"
         );
         self.0 |= Self::WRITE_ONLY_FLAG;
         self
@@ -56,15 +56,15 @@ impl VariableFlags {
     }
 }
 
-impl Default for VariableFlags {
+impl Default for ObjectFlags {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl core::fmt::Debug for VariableFlags {
+impl core::fmt::Debug for ObjectFlags {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("VariableFlags")
+        f.debug_struct("ObjectFlags")
             .field("read_only", &self.is_read_only())
             .field("write_only", &self.is_write_only())
             .field("pdo_size", &self.pdo_size())

@@ -3,7 +3,7 @@ use core::num::NonZeroU16;
 use embedded_can::{ExtendedId, Id, StandardId};
 
 use crate::objectdictionary::datalink::{BasicData, BasicReadData, BasicWriteData};
-use crate::objectdictionary::variable::{PdoSize, VariableInfo};
+use crate::objectdictionary::object::{ObjectInfo, PdoSize};
 use crate::objectdictionary::{ODError, OdInfo};
 use crate::sdo::SDOAbortCode;
 use crate::NodeId;
@@ -28,7 +28,7 @@ impl TPDO {
     ) -> Result<F, SDOAbortCode> {
         let mut buf = [0; 8];
         let mut frame_len = 0;
-        for i in 0..self.map.num_mapped_variables as usize {
+        for i in 0..self.map.num_mapped_objects as usize {
             if let Some(info) = &self.map.map[i] {
                 let data = od.get(info.od_position).read(info.index, info.subindex)?;
                 let bytes = data.as_bytes();
@@ -53,7 +53,7 @@ impl BasicData for TPDO {
                 _ => unreachable!(),
             },
             0x1A00..=0x1BFF => match subindex {
-                0 => Ok(self.map.num_mapped_variables.into()),
+                0 => Ok(self.map.num_mapped_objects.into()),
                 n => Ok(self.map.get_map_data_packed(n).into()),
             },
             _ => unreachable!(),
@@ -83,19 +83,19 @@ impl BasicData for TPDO {
             },
             0x1A00..=0x1BFF => {
                 if data.subindex() == 0 {
-                    self.map.num_mapped_variables = data.try_into()?;
+                    self.map.num_mapped_objects = data.try_into()?;
                     return Ok(());
                 }
-                if self.map.num_mapped_variables > 0 {
+                if self.map.num_mapped_objects > 0 {
                     // num_mapped_objects needs to be set to 0 before updating mapping
                     return Err(ODError::DeviceStateError);
                 }
                 let map_slot = data.subindex() as usize - 1;
                 if let Ok(data) = data.try_into() {
-                    let (index, subindex, num_bits) = unpack_variable_data(data);
+                    let (index, subindex, num_bits) = unpack_object_data(data);
 
                     return match od_info.find(index, subindex) {
-                        Some(info) => self.map.map_variable(map_slot, info, num_bits),
+                        Some(info) => self.map.map_object(map_slot, info, num_bits),
                         None => return Err(ODError::ObjectDoesNotExist),
                     };
                 }
@@ -255,16 +255,16 @@ pub struct TPDOMappingParameters {
     /// The number of valid object entries within the mapping record.
     /// The number of valid object entries shall be the number of the application objects
     /// that shall be transmitted with the corresponding TPDO.
-    num_mapped_variables: u8,
-    map: [Option<VariableInfo>; 8],
+    num_mapped_objects: u8,
+    map: [Option<ObjectInfo>; 8],
 }
 
 impl TPDOMappingParameters {
     // slot 1-8
-    pub fn map_variable(
+    pub fn map_object(
         &mut self,
         slot: usize,
-        info: VariableInfo,
+        info: ObjectInfo,
         num_bits: u8,
     ) -> Result<(), ODError> {
         // validate num_bits
@@ -284,7 +284,7 @@ impl TPDOMappingParameters {
     #[inline]
     pub fn get_map_data_packed(&self, num: u8) -> u32 {
         match &self.map[num as usize - 1] {
-            Some(info) => pack_variable_data(
+            Some(info) => pack_object_data(
                 info.index,
                 info.subindex,
                 info.flags.pdo_size().unwrap().get() * 8,
@@ -295,12 +295,12 @@ impl TPDOMappingParameters {
 }
 
 #[inline]
-pub fn pack_variable_data(index: u16, subindex: u8, num_bits: u8) -> u32 {
+pub fn pack_object_data(index: u16, subindex: u8, num_bits: u8) -> u32 {
     ((index as u32) << 16) + ((subindex as u32) << 8) + num_bits as u32
 }
 
 #[inline]
-pub fn unpack_variable_data(val: u32) -> (u16, u8, u8) {
+pub fn unpack_object_data(val: u32) -> (u16, u8, u8) {
     ((val >> 16) as u16, (val >> 8) as u8, val as u8)
 }
 

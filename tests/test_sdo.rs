@@ -2,6 +2,7 @@ use embedded_can::Frame;
 
 use canopen::objectdictionary::od_cell::OdCell;
 use canopen::objectdictionary::OdData;
+use canopen::sdo::client::{segmented_upload_request, upload_request};
 use canopen::sdo::SdoServer;
 use canopen::{CanOpenService, NodeId};
 use frame::CanOpenFrame;
@@ -9,7 +10,10 @@ use frame::CanOpenFrame;
 mod frame;
 macro_rules! on_sdo_message {
     ($node:ident, $od:ident, $data:expr) => {
-        $node.on_message(&CanOpenFrame::new($node.rx_cobid, $data).unwrap(), &mut $od)
+        $node.on_message(
+            &CanOpenFrame::new($node.rx_cobid, &$data).unwrap(),
+            &mut $od,
+        )
     };
 }
 
@@ -34,12 +38,12 @@ fn test_expedited_download() {
     let response_0 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x22, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
+        [0x22, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
     ); // size not specified
     let response_1 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x27, 0x02, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
+        [0x27, 0x02, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
     ); // size specified
 
     assert_eq!(
@@ -74,19 +78,19 @@ fn test_segmented_download() {
     let response_0 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x21, 0x01, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00]
+        [0x21, 0x01, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00]
     );
     // REQUEST_SEGMENT_DOWNLOAD, data
     let response_1 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]
+        [0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]
     );
     // REQUEST_SEGMENT_DOWNLOAD|TOGGLE_BIT|NO_MORE_DATA|unused_bytes=1, data
     let response_2 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]
+        [0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]
     );
 
     assert_eq!(
@@ -117,11 +121,7 @@ fn test_expedited_upload() {
 
     let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
 
-    let response_0 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
+    let response_0 = on_sdo_message!(sdo_server, od, upload_request(1, 0));
     assert_eq!(
         response_0.unwrap().data(),
         [0x43, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
@@ -143,21 +143,9 @@ fn test_segmented_upload() {
 
     let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
 
-    let response_0 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
-    let response_1 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
-    let response_2 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
+    let response_0 = on_sdo_message!(sdo_server, od, upload_request(1, 0));
+    let response_1 = on_sdo_message!(sdo_server, od, segmented_upload_request(false));
+    let response_2 = on_sdo_message!(sdo_server, od, segmented_upload_request(true));
 
     assert_eq!(
         response_0.unwrap().data(),
@@ -188,21 +176,9 @@ fn test_segmented_upload_with_known_size() {
 
     let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
 
-    let response_0 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
-    let response_1 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
-    let response_2 = on_sdo_message!(
-        sdo_server,
-        od,
-        &[0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
+    let response_0 = on_sdo_message!(sdo_server, od, upload_request(1, 0));
+    let response_1 = on_sdo_message!(sdo_server, od, segmented_upload_request(false));
+    let response_2 = on_sdo_message!(sdo_server, od, segmented_upload_request(true));
 
     assert_eq!(
         response_0.unwrap().data(),
@@ -233,17 +209,17 @@ fn test_abort() {
     let response_0 = on_sdo_message!(
         sdo_server,
         od,
-        &[0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        [0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     ); // invalid command specifier
     let response_1 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        [0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     ); // upload invalid index
     let response_2 = on_sdo_message!(
         sdo_server,
         od,
-        &[0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]
+        [0x40, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]
     ); // upload invalid subindex
        // TODO TOGGLE Bit not alternated
     assert_eq!(
@@ -259,17 +235,3 @@ fn test_abort() {
         [0x80, 0x01, 0x00, 0x01, 0x11, 0x00, 0x09, 0x06]
     );
 }
-
-/*
-#[test]
-fn test_thread() {
-
-    static OD: ObjectDictionary = ObjectDictionary { objects: &[] };
-    let mut node = CanOpenNode::new(2, &network, &OD);
-    let mut tpdo = TPDO(&OD);
-    on_sdo_message!(node, &[]);
-    let t = std::thread::spawn(move || tpdo.stuff());
-    on_sdo_message!(node, &[]);
-    t.join().unwrap();
-}
-*/

@@ -1,0 +1,35 @@
+error: field must have #[canopen()] attribute
+ --> tests/ui/derive_errors.rs:5:5
+  |
+5 |     a: u8,
+  |     ^^^^^
+
+error: Object must declare `index`
+ --> tests/ui/derive_errors.rs:6:5
+  |
+6 |     #[canopen()]
+  |     ^^^^^^^^^^^^
+
+error: number too large to fit in target type
+ --> tests/ui/derive_errors.rs:8:23
+  |
+8 |     #[canopen(index = 0xFFFF_FFFF)]
+  |                       ^^^^^^^^^^^
+
+error: Object cannot be both read-only and write-only
+  --> tests/ui/derive_errors.rs:10:5
+   |
+10 |     #[canopen(index = 1, read_only, write_only)]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: Duplicate index and subindex combination
+  --> tests/ui/derive_errors.rs:17:5
+   |
+17 |     a1: u8,
+   |     ^^
+
+error: Duplicate index and subindex combination
+  --> tests/ui/derive_errors.rs:21:5
+   |
+21 |     c1: u8,
+   |     ^^
