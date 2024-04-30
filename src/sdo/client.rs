@@ -1,7 +1,150 @@
+#![allow(unused)]
+
 use core::array::TryFromSliceError;
 use core::fmt::Debug;
 
+use embedded_can::{Frame, StandardId};
+
+use crate::slot::{Consumer, Producer, Slot};
+use crate::NodeId;
+
 use super::*;
+
+pub type SdoBuffer = Slot<[u8; 8]>;
+pub type SdoProducer<'a> = Producer<'a, [u8; 8]>;
+pub type SdoConsumer<'a> = Consumer<'a, [u8; 8]>;
+
+pub struct SdoClient<'c> {
+    pub rx_cobid: StandardId,
+    pub tx_cobid: StandardId,
+    sdo_consumer: SdoConsumer<'c>,
+}
+
+impl<'c> SdoClient<'c> {
+    pub fn new(node_id: NodeId, sdo_consumer: SdoConsumer<'c>) -> Self {
+        SdoClient {
+            rx_cobid: node_id.sdo_rx_cobid(),
+            tx_cobid: node_id.sdo_tx_cobid(),
+            sdo_consumer,
+        }
+    }
+
+    pub fn read<'s, 'b>(
+        &'s mut self,
+        index: u16,
+        subindex: u8,
+        buffer: &'b mut [u8],
+    ) -> Reader<'c, 's, 'b> {
+        self.sdo_consumer.dequeue();
+        Reader {
+            sdo_client: self,
+            request_sent: false,
+            done: false,
+            toggle_bit: false,
+            first_response_received: false,
+            len: 0,
+            buffer,
+            index,
+            subindex,
+        }
+    }
+}
+
+pub struct Reader<'c, 's, 'b> {
+    sdo_client: &'s mut SdoClient<'c>,
+    // state
+    request_sent: bool,
+    done: bool,
+    toggle_bit: bool,
+    first_response_received: bool,
+    len: usize,
+    // state end
+    buffer: &'b mut [u8],
+    index: u16,
+    subindex: u8,
+}
+
+impl Reader<'_, '_, '_> {
+    pub fn poll<F: Frame>(&mut self) -> Result<ReadResult<F>, ProtocolError> {
+        if !self.request_sent {
+            let frame = self.frame(&upload_request(self.index, self.subindex));
+            self.request_sent = true;
+            return Ok(ReadResult::NextRequest(frame));
+        }
+
+        if self.done {
+            return Ok(ReadResult::Done);
+        }
+
+        let Some(response) = self.sdo_client.sdo_consumer.dequeue() else {
+            return Ok(ReadResult::Waiting);
+        };
+
+        match response_css(&response) {
+            RESPONSE_ABORTED => Err(to_abort_code(&response).into()),
+            RESPONSE_UPLOAD => self.on_upload_response(response),
+            RESPONSE_SEGMENT_UPLOAD => self.on_segmented_upload_response(response),
+            _ => Err(ProtocolError::ParseError),
+        }
+    }
+
+    fn on_upload_response<F: Frame>(
+        &mut self,
+        response: [u8; 8],
+    ) -> Result<ReadResult<F>, ProtocolError> {
+        if self.first_response_received {
+            return Err(ProtocolError::ParseError);
+        }
+        self.first_response_received = true;
+        check_response_index(&response, self.index, self.subindex)?;
+        if response[0] & EXPEDITED > 0 {
+            let n = (response[0] >> 2) & 0x3;
+            let data = &response[4..8 - n as usize];
+            self.done = true;
+            self.len = data.len();
+            self.buffer[..data.len()].copy_from_slice(data);
+            Ok(ReadResult::Done)
+        } else {
+            // FIXME maybe use size in last 4 bytes
+            let frame = self.frame(&segmented_upload_request(self.toggle_bit));
+            Ok(ReadResult::NextRequest(frame))
+        }
+    }
+
+    fn on_segmented_upload_response<F: Frame>(
+        &mut self,
+        response: [u8; 8],
+    ) -> Result<ReadResult<F>, ProtocolError> {
+        if !self.first_response_received {
+            return Err(ProtocolError::ParseError);
+        }
+        if (response[0] & TOGGLE_BIT > 0) != self.toggle_bit {
+            return Err(ProtocolError::ParseError);
+        }
+        self.toggle_bit = !self.toggle_bit;
+        let n = (response[0] >> 1) & 0x7;
+        let data = &response[1..8 - n as usize];
+        self.buffer[self.len..self.len + data.len()].copy_from_slice(data);
+        self.len += data.len();
+        if response[0] & NO_MORE_DATA > 0 {
+            self.done = true;
+            Ok(ReadResult::Done)
+        } else {
+            let frame = self.frame(&segmented_upload_request(self.toggle_bit));
+            Ok(ReadResult::NextRequest(frame))
+        }
+    }
+
+    fn frame<F: Frame>(&self, data: &[u8; 8]) -> F {
+        F::new(self.sdo_client.rx_cobid, data).expect("request should fit")
+    }
+}
+
+pub enum ReadResult<F> {
+    NextRequest(F),
+    Waiting,
+    Done,
+}
 
 pub fn upload_request(index: u16, sub_index: u8) -> [u8; 8] {
     let mut request = [0; 8];
@@ -26,6 +169,24 @@ pub fn download_request<T: SdoValue>(index: u16, sub_index: u8, val: T) -> [u8; 
     request
 }
 
+fn response_css(response: &[u8; 8]) -> u8 {
+    response[0] & 0b1110_0000
+}
+
+fn check_response_index(
+    response: &[u8; 8],
+    expected_index: u16,
+    expected_subindex: u8,
+) -> Result<(), ProtocolError> {
+    if u16::from_le_bytes([response[1], response[2]]) != expected_index {
+        Err(ProtocolError::IndexMismatch)
+    } else if response[3] != expected_subindex {
+        Err(ProtocolError::SubindexMismatch)
+    } else {
+        Ok(())
+    }
+}
+
 pub fn segmented_upload_request(toggle_bit: bool) -> [u8; 8] {
     let mut request = [0; 8];
     request[0] = if toggle_bit {
@@ -39,15 +200,12 @@ pub fn segmented_upload_request(toggle_bit: bool) -> [u8; 8] {
 pub fn parse_upload_response<T: SdoValue>(
     response: &[u8; 8],
     expected_index: u16,
+    expected_subindex: u8,
 ) -> Result<T, ProtocolError> {
-    let ccs = response[0] & 0b1110_0000;
-    match ccs {
+    match response_css(response) {
         RESPONSE_ABORTED => Err(ProtocolError::Abort(to_abort_code(response))),
         RESPONSE_UPLOAD => {
-            let index = response[1] as u16 + ((response[2] as u16) << 8);
-            if index != expected_index {
-                return Err(ProtocolError::IndexMismatch);
-            }
+            check_response_index(response, expected_index, expected_subindex)?;
 
             let n = (response[0] >> 2) & 0x3;
             let data = &response[4..8 - n as usize];
@@ -60,17 +218,11 @@ pub fn parse_upload_response<T: SdoValue>(
 pub fn parse_download_response(
     response: &[u8; 8],
     expected_index: u16,
+    expected_subindex: u8,
 ) -> Result<(), ProtocolError> {
-    let ccs = response[0] & 0b1110_0000;
-    match ccs {
+    match response_css(response) {
         RESPONSE_ABORTED => Err(ProtocolError::Abort(to_abort_code(response))),
-        RESPONSE_DOWNLOAD => {
-            let index = response[1] as u16 + ((response[2] as u16) << 8);
-            if index != expected_index {
-                return Err(ProtocolError::IndexMismatch);
-            }
-            Ok(())
-        }
+        RESPONSE_DOWNLOAD => check_response_index(response, expected_index, expected_subindex),
         _ => Err(ProtocolError::ParseError),
     }
 }
@@ -90,6 +242,8 @@ pub enum ProtocolError {
     ParseError,
     /// Response indicated a different index then the one in the request
     IndexMismatch,
+    /// Response indicated a different subindex then the one in the request
+    SubindexMismatch,
     /// Server sent an AbortCode
     Abort(SDOAbortCode),
 }
@@ -104,6 +258,11 @@ impl From<TryFromSliceError> for ParseError {
 impl From<ParseError> for ProtocolError {
     fn from(_: ParseError) -> Self {
         ProtocolError::ParseError
+    }
+}
+impl From<SDOAbortCode> for ProtocolError {
+    fn from(value: SDOAbortCode) -> Self {
+        ProtocolError::Abort(value)
     }
 }
 
@@ -164,9 +323,9 @@ mod test {
     #[test]
     fn test_upload_response() {
         let data = [RESPONSE_UPLOAD, 0, 0, 0, 1, 0, 0, 0];
-        assert_eq!(parse_upload_response(&data, 0), Ok(1u32));
+        assert_eq!(parse_upload_response(&data, 0, 0), Ok(1u32));
         assert_eq!(
-            parse_upload_response::<u32>(&data, 1),
+            parse_upload_response::<u32>(&data, 1, 0),
             Err(ProtocolError::IndexMismatch)
         );
     }

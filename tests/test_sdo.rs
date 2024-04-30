@@ -2,9 +2,9 @@ use embedded_can::Frame;
 
 use canopen::objectdictionary::od_cell::OdCell;
 use canopen::objectdictionary::OdData;
-use canopen::sdo::client::{segmented_upload_request, upload_request};
+use canopen::sdo::client::{ReadResult, SdoBuffer, SdoClient};
 use canopen::sdo::SdoServer;
-use canopen::{CanOpenService, NodeId};
+use canopen::{CanOpenService, NodeId, ObjectDictionary};
 use frame::CanOpenFrame;
 
 mod frame;
@@ -33,7 +33,7 @@ fn test_expedited_download() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
+    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
     let response_0 = on_sdo_message!(
         sdo_server,
@@ -72,7 +72,7 @@ fn test_segmented_download() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
+    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
     // REQUEST_DOWNLOAD|SIZE_SPECIFIED, index=1, subindex=0, len=13
     let response_0 = on_sdo_message!(
@@ -109,6 +109,32 @@ fn test_segmented_download() {
     assert_eq!(od.data.obj.get().as_slice(), b"A long string");
 }
 
+fn read<T, const N: usize>(
+    buf: &mut [u8],
+    index: u16,
+    subindex: u8,
+    server: &mut SdoServer,
+    od: &mut ObjectDictionary<T, N>,
+) {
+    let mut sdo_buffer = SdoBuffer::new();
+    let (mut sdo_producer, sdo_consumer) = sdo_buffer.split();
+    let mut sdo_client = SdoClient::new(NodeId::NODE_ID_2, sdo_consumer);
+    let mut sdo_reader = sdo_client.read(index, subindex, buf);
+
+    loop {
+        match sdo_reader.poll().unwrap() {
+            ReadResult::NextRequest(frame) => {
+                let response: CanOpenFrame = server.on_message(&frame, od).unwrap();
+                sdo_producer
+                    .enqueue(response.data().try_into().unwrap())
+                    .unwrap();
+            }
+            ReadResult::Done => break,
+            ReadResult::Waiting => unreachable!(),
+        }
+    }
+}
+
 #[test]
 fn test_expedited_upload() {
     #[derive(OdData)]
@@ -119,13 +145,12 @@ fn test_expedited_upload() {
 
     let mut od = Data { obj: 0x04030201 }.into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
+    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let response_0 = on_sdo_message!(sdo_server, od, upload_request(1, 0));
-    assert_eq!(
-        response_0.unwrap().data(),
-        [0x43, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04]
-    );
+    let mut data_buf = [0; 4];
+    read(&mut data_buf, 1, 0, &mut sdo_server, &mut od);
+
+    assert_eq!(u32::from_le_bytes(data_buf), 0x04030201);
 }
 
 #[test]
@@ -141,24 +166,12 @@ fn test_segmented_upload() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
+    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let response_0 = on_sdo_message!(sdo_server, od, upload_request(1, 0));
-    let response_1 = on_sdo_message!(sdo_server, od, segmented_upload_request(false));
-    let response_2 = on_sdo_message!(sdo_server, od, segmented_upload_request(true));
+    let mut data_buf = [0; 9];
+    read(&mut data_buf, 1, 0, &mut sdo_server, &mut od);
 
-    assert_eq!(
-        response_0.unwrap().data(),
-        [0x41, 0x01, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00]
-    );
-    assert_eq!(
-        response_1.unwrap().data(),
-        [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
-    );
-    assert_eq!(
-        response_2.unwrap().data(),
-        [0x1b, 0x08, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00]
-    );
+    assert_eq!(data_buf, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
 }
 
 #[test]
@@ -174,24 +187,12 @@ fn test_segmented_upload_with_known_size() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
+    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let response_0 = on_sdo_message!(sdo_server, od, upload_request(1, 0));
-    let response_1 = on_sdo_message!(sdo_server, od, segmented_upload_request(false));
-    let response_2 = on_sdo_message!(sdo_server, od, segmented_upload_request(true));
+    let mut data_buf = [0; 13];
+    read(&mut data_buf, 1, 0, &mut sdo_server, &mut od);
 
-    assert_eq!(
-        response_0.unwrap().data(),
-        [0x41, 0x01, 0x00, 0x00, 0x0d, 0x00, 0x00, 0x00]
-    );
-    assert_eq!(
-        response_1.unwrap().data(),
-        [0x00, 0x41, 0x20, 0x6c, 0x6f, 0x6e, 0x67, 0x20]
-    );
-    assert_eq!(
-        response_2.unwrap().data(),
-        [0x13, 0x73, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x00]
-    );
+    assert_eq!(&data_buf, b"A long string");
 }
 
 #[test]
@@ -204,7 +205,7 @@ fn test_abort() {
 
     let mut od = Data { obj: 0 }.into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::new(2).unwrap());
+    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
     let response_0 = on_sdo_message!(
         sdo_server,
