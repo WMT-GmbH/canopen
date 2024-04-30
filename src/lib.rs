@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 use embedded_can::{Id, StandardId};
 
@@ -14,6 +14,7 @@ pub mod nmt;
 pub mod objectdictionary;
 pub mod pdo;
 pub mod sdo;
+pub mod slot;
 
 pub trait CanOpenService<F: embedded_can::Frame, T, const N: usize> {
     fn on_message(&mut self, frame: &F, od: &mut ObjectDictionary<T, N>) -> Option<F>;

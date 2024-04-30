@@ -11,5 +11,8 @@ embedded-can = "0.4.1"
 atomic_float = { git = "https://github.com/dimpolo/atomic_float.git", branch = "dev", default-features = false }
 canopen-derive = { path = "canopen-derive" }
 
+[target.'cfg(loom)'.dependencies]
+loom = { version = "0.7.2", features = ["checkpoint"] }
+
 [dev-dependencies]
 trybuild = "1.0"
