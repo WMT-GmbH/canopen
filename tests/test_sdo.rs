@@ -110,26 +110,26 @@ fn test_segmented_download() {
 }
 
 fn read<T, const N: usize>(
-    buf: &mut [u8],
     index: u16,
     subindex: u8,
     server: &mut SdoServer,
     od: &mut ObjectDictionary<T, N>,
-) {
+) -> Vec<u8> {
+    let mut buf = Vec::new();
     let mut sdo_buffer = SdoBuffer::new();
     let (mut sdo_producer, sdo_consumer) = sdo_buffer.split();
     let mut sdo_client = SdoClient::new(NodeId::NODE_ID_2, sdo_consumer);
-    let mut sdo_reader = sdo_client.read(index, subindex, buf);
+    let mut sdo_reader = sdo_client.read(index, subindex);
 
     loop {
-        match sdo_reader.poll().unwrap() {
+        match sdo_reader.poll(&mut buf).unwrap() {
             ReadResult::NextRequest(frame) => {
                 let response: CanOpenFrame = server.on_message(&frame, od).unwrap();
                 sdo_producer
                     .enqueue(response.data().try_into().unwrap())
                     .unwrap();
             }
-            ReadResult::Done => break,
+            ReadResult::Done => break buf,
             ReadResult::Waiting => unreachable!(),
         }
     }
@@ -147,10 +147,9 @@ fn test_expedited_upload() {
 
     let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let mut data_buf = [0; 4];
-    read(&mut data_buf, 1, 0, &mut sdo_server, &mut od);
+    let data = read(1, 0, &mut sdo_server, &mut od);
 
-    assert_eq!(u32::from_le_bytes(data_buf), 0x04030201);
+    assert_eq!(data, 0x04030201_u32.to_le_bytes());
 }
 
 #[test]
@@ -168,10 +167,9 @@ fn test_segmented_upload() {
 
     let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let mut data_buf = [0; 9];
-    read(&mut data_buf, 1, 0, &mut sdo_server, &mut od);
+    let data = read(1, 0, &mut sdo_server, &mut od);
 
-    assert_eq!(data_buf, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert_eq!(data, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
 }
 
 #[test]
@@ -189,10 +187,9 @@ fn test_segmented_upload_with_known_size() {
 
     let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let mut data_buf = [0; 13];
-    read(&mut data_buf, 1, 0, &mut sdo_server, &mut od);
+    let data = read(1, 0, &mut sdo_server, &mut od);
 
-    assert_eq!(&data_buf, b"A long string");
+    assert_eq!(data, b"A long string");
 }
 
 #[test]

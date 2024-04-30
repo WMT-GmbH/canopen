@@ -29,108 +29,100 @@ impl<'c> SdoClient<'c> {
         }
     }
 
-    pub fn read<'s, 'b>(
-        &'s mut self,
-        index: u16,
-        subindex: u8,
-        buffer: &'b mut [u8],
-    ) -> Reader<'c, 's, 'b> {
+    pub fn read<'s, 'b>(&'s mut self, index: u16, subindex: u8) -> Reader<'c, 's> {
         self.sdo_consumer.dequeue();
         Reader {
             sdo_client: self,
-            request_sent: false,
-            done: false,
-            toggle_bit: false,
-            first_response_received: false,
-            len: 0,
-            buffer,
-            index,
-            subindex,
+            state: ReaderState::Init { index, subindex },
         }
     }
 }
 
-pub struct Reader<'c, 's, 'b> {
+pub struct Reader<'c, 's> {
     sdo_client: &'s mut SdoClient<'c>,
-    // state
-    request_sent: bool,
-    done: bool,
-    toggle_bit: bool,
-    first_response_received: bool,
-    len: usize,
-    // state end
-    buffer: &'b mut [u8],
-    index: u16,
-    subindex: u8,
+    state: ReaderState,
 }
 
-impl Reader<'_, '_, '_> {
-    pub fn poll<F: Frame>(&mut self) -> Result<ReadResult<F>, ProtocolError> {
-        if !self.request_sent {
-            let frame = self.frame(&upload_request(self.index, self.subindex));
-            self.request_sent = true;
-            return Ok(ReadResult::NextRequest(frame));
-        }
+enum ReaderState {
+    Init { index: u16, subindex: u8 },
+    RequestSent { index: u16, subindex: u8 },
+    Segmented { toggle_bit: bool },
+    Done,
+}
 
-        if self.done {
-            return Ok(ReadResult::Done);
-        }
-
-        let Some(response) = self.sdo_client.sdo_consumer.dequeue() else {
-            return Ok(ReadResult::Waiting);
-        };
-
-        match response_css(&response) {
-            RESPONSE_ABORTED => Err(to_abort_code(&response).into()),
-            RESPONSE_UPLOAD => self.on_upload_response(response),
-            RESPONSE_SEGMENT_UPLOAD => self.on_segmented_upload_response(response),
-            _ => Err(ProtocolError::ParseError),
+impl Reader<'_, '_> {
+    pub fn poll<F: Frame, B: Extend<u8>>(
+        &mut self,
+        buf: &mut B,
+    ) -> Result<ReadResult<F>, ProtocolError> {
+        match &self.state {
+            ReaderState::Init { index, subindex } => {
+                let frame = self.frame(&upload_request(*index, *subindex));
+                self.state = ReaderState::RequestSent {
+                    index: *index,
+                    subindex: *subindex,
+                };
+                Ok(ReadResult::NextRequest(frame))
+            }
+            ReaderState::Done => Ok(ReadResult::Done),
+            other => {
+                let Some(response) = self.sdo_client.sdo_consumer.dequeue() else {
+                    return Ok(ReadResult::Waiting);
+                };
+                match response_css(&response) {
+                    RESPONSE_ABORTED => Err(to_abort_code(&response).into()),
+                    RESPONSE_UPLOAD => self.on_upload_response(response, buf),
+                    RESPONSE_SEGMENT_UPLOAD => self.on_segmented_upload_response(response, buf),
+                    _ => Err(ProtocolError::ParseError),
+                }
+            }
         }
     }
 
-    fn on_upload_response<F: Frame>(
+    fn on_upload_response<F: Frame, B: Extend<u8>>(
         &mut self,
         response: [u8; 8],
+        buf: &mut B,
     ) -> Result<ReadResult<F>, ProtocolError> {
-        if self.first_response_received {
+        let ReaderState::RequestSent { index, subindex } = &self.state else {
             return Err(ProtocolError::ParseError);
-        }
-        self.first_response_received = true;
-        check_response_index(&response, self.index, self.subindex)?;
+        };
+        check_response_index(&response, *index, *subindex)?;
         if response[0] & EXPEDITED > 0 {
+            self.state = ReaderState::Done;
             let n = (response[0] >> 2) & 0x3;
             let data = &response[4..8 - n as usize];
-            self.done = true;
-            self.len = data.len();
-            self.buffer[..data.len()].copy_from_slice(data);
+            buf.extend(data.iter().copied());
             Ok(ReadResult::Done)
         } else {
+            self.state = ReaderState::Segmented { toggle_bit: false };
             // FIXME maybe use size in last 4 bytes
-            let frame = self.frame(&segmented_upload_request(self.toggle_bit));
+            let frame = self.frame(&segmented_upload_request(false));
             Ok(ReadResult::NextRequest(frame))
         }
     }
 
-    fn on_segmented_upload_response<F: Frame>(
+    fn on_segmented_upload_response<F: Frame, B: Extend<u8>>(
         &mut self,
         response: [u8; 8],
+        buf: &mut B,
     ) -> Result<ReadResult<F>, ProtocolError> {
-        if !self.first_response_received {
+        let ReaderState::Segmented { toggle_bit } = &mut self.state else {
+            return Err(ProtocolError::ParseError);
+        };
+        if (response[0] & TOGGLE_BIT > 0) != *toggle_bit {
             return Err(ProtocolError::ParseError);
         }
-        if (response[0] & TOGGLE_BIT > 0) != self.toggle_bit {
-            return Err(ProtocolError::ParseError);
-        }
-        self.toggle_bit = !self.toggle_bit;
         let n = (response[0] >> 1) & 0x7;
         let data = &response[1..8 - n as usize];
-        self.buffer[self.len..self.len + data.len()].copy_from_slice(data);
-        self.len += data.len();
+        buf.extend(data.iter().copied());
         if response[0] & NO_MORE_DATA > 0 {
-            self.done = true;
+            self.state = ReaderState::Done;
             Ok(ReadResult::Done)
         } else {
-            let frame = self.frame(&segmented_upload_request(self.toggle_bit));
+            *toggle_bit = !*toggle_bit;
+            let toggle_bit = *toggle_bit;
+            let frame = self.frame(&segmented_upload_request(toggle_bit));
             Ok(ReadResult::NextRequest(frame))
         }
     }
