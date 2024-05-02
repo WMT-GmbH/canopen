@@ -2,7 +2,7 @@ use embedded_can::Frame;
 
 use canopen::objectdictionary::od_cell::OdCell;
 use canopen::objectdictionary::OdData;
-use canopen::sdo::client::{ReadResult, SdoBuffer, SdoClient};
+use canopen::sdo::client::{ReadInto, ReadResult, SdoBuffer, SdoClient};
 use canopen::sdo::SdoServer;
 use canopen::{CanOpenService, NodeId, ObjectDictionary};
 use frame::CanOpenFrame;
@@ -109,27 +109,27 @@ fn test_segmented_download() {
     assert_eq!(od.data.obj.get().as_slice(), b"A long string");
 }
 
-fn read<T, const N: usize>(
+fn read<B: ReadInto, OD, const N: usize>(
     index: u16,
     subindex: u8,
     server: &mut SdoServer,
-    od: &mut ObjectDictionary<T, N>,
-) -> Vec<u8> {
-    let mut buf = Vec::new();
+    od: &mut ObjectDictionary<OD, N>,
+    buf: &mut B,
+) {
     let mut sdo_buffer = SdoBuffer::new();
     let (mut sdo_producer, sdo_consumer) = sdo_buffer.split();
     let mut sdo_client = SdoClient::new(NodeId::NODE_ID_2, sdo_consumer);
     let mut sdo_reader = sdo_client.read(index, subindex);
 
     loop {
-        match sdo_reader.poll(&mut buf).unwrap() {
+        match sdo_reader.poll(buf).unwrap() {
             ReadResult::NextRequest(frame) => {
                 let response: CanOpenFrame = server.on_message(&frame, od).unwrap();
                 sdo_producer
                     .enqueue(response.data().try_into().unwrap())
                     .unwrap();
             }
-            ReadResult::Done => break buf,
+            ReadResult::Done => break,
             ReadResult::Waiting => unreachable!(),
         }
     }
@@ -147,9 +147,10 @@ fn test_expedited_upload() {
 
     let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let data = read(1, 0, &mut sdo_server, &mut od);
+    let mut data = 0_u32;
+    read(1, 0, &mut sdo_server, &mut od, &mut data);
 
-    assert_eq!(data, 0x04030201_u32.to_le_bytes());
+    assert_eq!(data, 0x04030201);
 }
 
 #[test]
@@ -167,7 +168,8 @@ fn test_segmented_upload() {
 
     let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let data = read(1, 0, &mut sdo_server, &mut od);
+    let mut data = Vec::new();
+    read(1, 0, &mut sdo_server, &mut od, &mut data);
 
     assert_eq!(data, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
 }
@@ -187,7 +189,8 @@ fn test_segmented_upload_with_known_size() {
 
     let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
 
-    let data = read(1, 0, &mut sdo_server, &mut od);
+    let mut data = Vec::new();
+    read(1, 0, &mut sdo_server, &mut od, &mut data);
 
     assert_eq!(data, b"A long string");
 }

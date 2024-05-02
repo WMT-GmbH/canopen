@@ -38,6 +38,10 @@ impl<'c> SdoClient<'c> {
     }
 }
 
+pub trait ReadInto {
+    fn read_into(&mut self, buf: &[u8]) -> Result<(), ParseError>;
+}
+
 pub struct Reader<'c, 's> {
     sdo_client: &'s mut SdoClient<'c>,
     state: ReaderState,
@@ -51,7 +55,7 @@ enum ReaderState {
 }
 
 impl Reader<'_, '_> {
-    pub fn poll<F: Frame, B: Extend<u8>>(
+    pub fn poll<F: Frame, B: ReadInto>(
         &mut self,
         buf: &mut B,
     ) -> Result<ReadResult<F>, ProtocolError> {
@@ -79,7 +83,7 @@ impl Reader<'_, '_> {
         }
     }
 
-    fn on_upload_response<F: Frame, B: Extend<u8>>(
+    fn on_upload_response<F: Frame, B: ReadInto>(
         &mut self,
         response: [u8; 8],
         buf: &mut B,
@@ -92,7 +96,7 @@ impl Reader<'_, '_> {
             self.state = ReaderState::Done;
             let n = (response[0] >> 2) & 0x3;
             let data = &response[4..8 - n as usize];
-            buf.extend(data.iter().copied());
+            buf.read_into(data)?;
             Ok(ReadResult::Done)
         } else {
             self.state = ReaderState::Segmented { toggle_bit: false };
@@ -102,7 +106,7 @@ impl Reader<'_, '_> {
         }
     }
 
-    fn on_segmented_upload_response<F: Frame, B: Extend<u8>>(
+    fn on_segmented_upload_response<F: Frame, B: ReadInto>(
         &mut self,
         response: [u8; 8],
         buf: &mut B,
@@ -115,7 +119,7 @@ impl Reader<'_, '_> {
         }
         let n = (response[0] >> 1) & 0x7;
         let data = &response[1..8 - n as usize];
-        buf.extend(data.iter().copied());
+        buf.read_into(data)?;
         if response[0] & NO_MORE_DATA > 0 {
             self.state = ReaderState::Done;
             Ok(ReadResult::Done)
@@ -305,6 +309,52 @@ impl SdoValue for bool {
 
     fn to_bytes(self) -> Self::Bytes {
         [self as u8]
+    }
+}
+
+impl<const N: usize> ReadInto for heapless::Vec<u8, N> {
+    fn read_into(&mut self, buf: &[u8]) -> Result<(), ParseError> {
+        self.extend_from_slice(buf).map_err(|_| ParseError)
+    }
+}
+
+#[cfg(feature = "std")]
+impl ReadInto for Vec<u8> {
+    fn read_into(&mut self, buf: &[u8]) -> Result<(), ParseError> {
+        self.extend_from_slice(buf);
+        Ok(())
+    }
+}
+
+macro_rules! read_into {
+    ($typ:ty) => {
+        impl ReadInto for $typ {
+            fn read_into(&mut self, buf: &[u8]) -> Result<(), ParseError> {
+                let bytes: [u8; core::mem::size_of::<Self>()] = buf.try_into()?;
+                *self = Self::from_le_bytes(bytes);
+                Ok(())
+            }
+        }
+    };
+}
+
+read_into!(u8);
+read_into!(u16);
+read_into!(u32);
+read_into!(i8);
+read_into!(i16);
+read_into!(i32);
+read_into!(f32);
+
+impl ReadInto for bool {
+    fn read_into(&mut self, bytes: &[u8]) -> Result<(), ParseError> {
+        let bytes: [u8; 1] = bytes.try_into()?;
+        match bytes[0] {
+            0 => *self = false,
+            1 => *self = true,
+            _ => return Err(ParseError),
+        }
+        Ok(())
     }
 }
 
