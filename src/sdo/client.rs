@@ -5,8 +5,9 @@ use core::fmt::Debug;
 
 use embedded_can::{Frame, StandardId};
 
+use crate::objectdictionary::datalink::WriteData;
 use crate::slot::{Consumer, Producer, Slot};
-use crate::NodeId;
+use crate::{NodeId, SdoMessage};
 
 use super::*;
 
@@ -14,14 +15,14 @@ pub type SdoBuffer = Slot<[u8; 8]>;
 pub type SdoProducer<'a> = Producer<'a, [u8; 8]>;
 pub type SdoConsumer<'a> = Consumer<'a, [u8; 8]>;
 
-pub struct SdoClient<'c> {
+pub struct SdoClient<'buf> {
     pub rx_cobid: StandardId,
     pub tx_cobid: StandardId,
-    sdo_consumer: SdoConsumer<'c>,
+    sdo_consumer: SdoConsumer<'buf>,
 }
 
-impl<'c> SdoClient<'c> {
-    pub fn new(node_id: NodeId, sdo_consumer: SdoConsumer<'c>) -> Self {
+impl<'buf> SdoClient<'buf> {
+    pub fn new(node_id: NodeId, sdo_consumer: SdoConsumer<'buf>) -> Self {
         SdoClient {
             rx_cobid: node_id.sdo_rx_cobid(),
             tx_cobid: node_id.sdo_tx_cobid(),
@@ -29,7 +30,8 @@ impl<'c> SdoClient<'c> {
         }
     }
 
-    pub fn read<'s, 'b>(&'s mut self, index: u16, subindex: u8) -> Reader<'c, 's> {
+    pub fn read<'s>(&'s mut self, index: u16, subindex: u8) -> Reader<'s, 'buf> {
+        // clear SDO buffer
         self.sdo_consumer.dequeue();
         Reader {
             sdo_client: self,
@@ -42,8 +44,8 @@ pub trait ReadInto {
     fn read_into(&mut self, buf: &[u8]) -> Result<(), ParseError>;
 }
 
-pub struct Reader<'c, 's> {
-    sdo_client: &'s mut SdoClient<'c>,
+pub struct Reader<'s, 'buf> {
+    sdo_client: &'s mut SdoClient<'buf>,
     state: ReaderState,
 }
 
@@ -55,18 +57,18 @@ enum ReaderState {
 }
 
 impl Reader<'_, '_> {
-    pub fn poll<F: Frame, B: ReadInto>(
+    pub fn poll<B: ReadInto>(
         &mut self,
         buf: &mut B,
-    ) -> Result<ReadResult<F>, ProtocolError> {
+    ) -> Result<ReadResult<SdoMessage>, ProtocolError> {
         match &self.state {
             ReaderState::Init { index, subindex } => {
-                let frame = self.frame(&upload_request(*index, *subindex));
+                let message = self.message(upload_request(*index, *subindex));
                 self.state = ReaderState::RequestSent {
                     index: *index,
                     subindex: *subindex,
                 };
-                Ok(ReadResult::NextRequest(frame))
+                Ok(ReadResult::NextRequest(message))
             }
             ReaderState::Done => Ok(ReadResult::Done),
             other => {
@@ -83,11 +85,11 @@ impl Reader<'_, '_> {
         }
     }
 
-    fn on_upload_response<F: Frame, B: ReadInto>(
+    fn on_upload_response<B: ReadInto>(
         &mut self,
         response: [u8; 8],
         buf: &mut B,
-    ) -> Result<ReadResult<F>, ProtocolError> {
+    ) -> Result<ReadResult<SdoMessage>, ProtocolError> {
         let ReaderState::RequestSent { index, subindex } = &self.state else {
             return Err(ProtocolError::ParseError);
         };
@@ -101,16 +103,16 @@ impl Reader<'_, '_> {
         } else {
             self.state = ReaderState::Segmented { toggle_bit: false };
             // FIXME maybe use size in last 4 bytes
-            let frame = self.frame(&segmented_upload_request(false));
-            Ok(ReadResult::NextRequest(frame))
+            let message = self.message(segmented_upload_request(false));
+            Ok(ReadResult::NextRequest(message))
         }
     }
 
-    fn on_segmented_upload_response<F: Frame, B: ReadInto>(
+    fn on_segmented_upload_response<B: ReadInto>(
         &mut self,
         response: [u8; 8],
         buf: &mut B,
-    ) -> Result<ReadResult<F>, ProtocolError> {
+    ) -> Result<ReadResult<SdoMessage>, ProtocolError> {
         let ReaderState::Segmented { toggle_bit } = &mut self.state else {
             return Err(ProtocolError::ParseError);
         };
@@ -126,13 +128,13 @@ impl Reader<'_, '_> {
         } else {
             *toggle_bit = !*toggle_bit;
             let toggle_bit = *toggle_bit;
-            let frame = self.frame(&segmented_upload_request(toggle_bit));
-            Ok(ReadResult::NextRequest(frame))
+            let message = self.message(segmented_upload_request(toggle_bit));
+            Ok(ReadResult::NextRequest(message))
         }
     }
 
-    fn frame<F: Frame>(&self, data: &[u8; 8]) -> F {
-        F::new(self.sdo_client.rx_cobid, data).expect("request should fit")
+    fn message(&self, data: [u8; 8]) -> SdoMessage {
+        SdoMessage::new(self.sdo_client.rx_cobid, data)
     }
 }
 

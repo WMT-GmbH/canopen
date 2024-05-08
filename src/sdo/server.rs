@@ -2,7 +2,7 @@ use embedded_can::{Id, StandardId};
 
 use crate::objectdictionary::datalink::WriteData;
 use crate::objectdictionary::{ObjectDictionary, OdPosition};
-use crate::{CanOpenService, NodeId};
+use crate::{CanOpenService, NodeId, SdoMessage};
 
 use super::*;
 
@@ -36,7 +36,7 @@ impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for SdoS
             return None;
         }
         if let Ok(data) = frame.data().try_into() {
-            self.on_request(data, od)
+            self.on_request(data, od).map(SdoMessage::into_frame)
         } else {
             None
         }
@@ -54,11 +54,11 @@ impl SdoServer {
         }
     }
 
-    pub fn on_request<F: embedded_can::Frame, T, const N: usize>(
+    pub fn on_request<T, const N: usize>(
         &mut self,
         data: &[u8; 8],
         od: &mut ObjectDictionary<T, N>,
-    ) -> Option<F> {
+    ) -> Option<SdoMessage> {
         let ccs = data[0] & 0xE0;
 
         let result = match ccs {
@@ -82,7 +82,7 @@ impl SdoServer {
         };
         match result {
             Ok(None) => None,
-            Ok(Some(response)) => Some(F::new(self.tx_cobid, &response).unwrap()),
+            Ok(Some(response)) => Some(SdoMessage::new(self.tx_cobid, response)),
             Err(abort_code) => {
                 self.state = State::None;
                 Some(self.abort(abort_code))
@@ -239,7 +239,7 @@ impl SdoServer {
         }
     }
 
-    fn abort<F: embedded_can::Frame>(&mut self, abort_error: SDOAbortCode) -> F {
+    fn abort(&mut self, abort_error: SDOAbortCode) -> SdoMessage {
         let [index_lo, index_hi] = self.last_index.to_le_bytes();
         let subindex = self.last_subindex;
         let code: [u8; 4] = (abort_error as u32).to_le_bytes();
@@ -254,7 +254,7 @@ impl SdoServer {
             code[3],
         ];
 
-        F::new(self.tx_cobid, &data).unwrap()
+        SdoMessage::new(self.tx_cobid, data)
     }
 }
 

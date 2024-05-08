@@ -1,7 +1,7 @@
 use embedded_can::{Id, StandardId};
 
-use crate::NodeId;
 use crate::{CanOpenService, ObjectDictionary};
+use crate::{LssMessage, NodeId};
 
 type RequestResult = Option<[u8; 8]>;
 
@@ -81,7 +81,7 @@ impl<'a> Lss<'a> {
         self.callback = Some(callback);
     }
 
-    pub fn on_request<F: embedded_can::Frame>(&mut self, request: &[u8; 8]) -> Option<F> {
+    pub fn on_request(&mut self, request: &[u8; 8]) -> Option<LssMessage> {
         let command_specifier = request[0];
 
         // check services that don't care about mode
@@ -116,7 +116,7 @@ impl<'a> Lss<'a> {
                 // Switch state selective service
                 return self
                     .switch_selective(request)
-                    .map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response));
             }
             IDENTIFY_VENDOR_ID
             | IDENTIFY_PRODUCT_CODE
@@ -127,12 +127,12 @@ impl<'a> Lss<'a> {
                 // LSS identify remote slave service
                 return self
                     .identify(request)
-                    .map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response));
             }
             FAST_SCAN => {
                 return self
                     .fast_scan(request)
-                    .map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap());
+                    .map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response));
             }
             _ => {
                 self.partial_command_state = PartialCommandState::Init;
@@ -175,7 +175,7 @@ impl<'a> Lss<'a> {
             _ => None,
         };
 
-        result.map(|response| F::new(Lss::LSS_RESPONSE_ID, &response).unwrap())
+        result.map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response))
     }
 
     fn set_node_id(&mut self, node_id: u8) -> RequestResult {
@@ -391,7 +391,7 @@ impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for Lss<
             return None;
         }
         if let Ok(data) = frame.data().try_into() {
-            self.on_request(data)
+            self.on_request(data).map(LssMessage::into_frame)
         } else {
             None
         }
@@ -402,38 +402,6 @@ impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for Lss<
 mod test {
     use super::*;
 
-    struct TestFrame;
-
-    impl embedded_can::Frame for TestFrame {
-        fn new(_: impl Into<Id>, _: &[u8]) -> Option<Self> {
-            Some(TestFrame)
-        }
-
-        fn new_remote(_: impl Into<Id>, _: usize) -> Option<Self> {
-            unimplemented!()
-        }
-
-        fn is_extended(&self) -> bool {
-            unimplemented!()
-        }
-
-        fn is_remote_frame(&self) -> bool {
-            unimplemented!()
-        }
-
-        fn id(&self) -> Id {
-            unimplemented!()
-        }
-
-        fn dlc(&self) -> usize {
-            unimplemented!()
-        }
-
-        fn data(&self) -> &[u8] {
-            unimplemented!()
-        }
-    }
-
     struct IdentifyRequest {
         vendor_id: u8,
         product_code: u8,
@@ -443,29 +411,29 @@ mod test {
         serial_high: u8,
     }
 
-    fn test_identify_request(lss: &mut Lss<'_>, req: IdentifyRequest) -> Option<TestFrame> {
+    fn test_identify_request(lss: &mut Lss<'_>, req: IdentifyRequest) -> Option<LssMessage> {
         let mut request = [IDENTIFY_VENDOR_ID, req.vendor_id, 0, 0, 0, 0, 0, 0];
-        assert!(lss.on_request::<TestFrame>(&request).is_none());
+        assert!(lss.on_request(&request).is_none());
 
         request[0] = IDENTIFY_PRODUCT_CODE;
         request[1] = req.product_code;
-        assert!(lss.on_request::<TestFrame>(&request).is_none());
+        assert!(lss.on_request(&request).is_none());
 
         request[0] = IDENTIFY_REVISION_NUMBER_LOW;
         request[1] = req.revision_low;
-        assert!(lss.on_request::<TestFrame>(&request).is_none());
+        assert!(lss.on_request(&request).is_none());
 
         request[0] = IDENTIFY_REVISION_NUMBER_HIGH;
         request[1] = req.revision_high;
-        assert!(lss.on_request::<TestFrame>(&request).is_none());
+        assert!(lss.on_request(&request).is_none());
 
         request[0] = IDENTIFY_SERIAL_NUMBER_LOW;
         request[1] = req.serial_low;
-        assert!(lss.on_request::<TestFrame>(&request).is_none());
+        assert!(lss.on_request(&request).is_none());
 
         request[0] = IDENTIFY_SERIAL_NUMBER_HIGH;
         request[1] = req.serial_high;
-        lss.on_request::<TestFrame>(&request)
+        lss.on_request(&request)
     }
 
     #[test]

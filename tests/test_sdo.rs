@@ -123,8 +123,8 @@ fn read<B: ReadInto, OD, const N: usize>(
 
     loop {
         match sdo_reader.poll(buf).unwrap() {
-            ReadResult::NextRequest(frame) => {
-                let response: CanOpenFrame = server.on_message(&frame, od).unwrap();
+            ReadResult::NextRequest(message) => {
+                let response: CanOpenFrame = server.on_message(&message.into_frame(), od).unwrap();
                 sdo_producer
                     .enqueue(response.data().try_into().unwrap())
                     .unwrap();

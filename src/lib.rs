@@ -16,6 +16,24 @@ pub mod pdo;
 pub mod sdo;
 pub mod slot;
 
+pub struct Message<const N: usize> {
+    can_id: StandardId,
+    data: [u8; N],
+}
+
+impl<const N: usize> Message<N> {
+    pub fn new(can_id: StandardId, data: [u8; N]) -> Self {
+        Message { can_id, data }
+    }
+
+    pub fn into_frame<F: embedded_can::Frame>(self) -> F {
+        F::new(self.can_id, &self.data).expect("data should fit")
+    }
+}
+
+pub type SdoMessage = Message<8>;
+pub type LssMessage = Message<8>;
+
 pub trait CanOpenService<F: embedded_can::Frame, T, const N: usize> {
     fn on_message(&mut self, frame: &F, od: &mut ObjectDictionary<T, N>) -> Option<F>;
 }
@@ -43,11 +61,11 @@ impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for CanO
                     }
                 } else if id == self.sdo.rx_cobid {
                     if let Ok(data) = frame.data().try_into() {
-                        return self.sdo.on_request(data, od);
+                        return self.sdo.on_request(data, od).map(Message::into_frame);
                     }
                 } else if id == Lss::LSS_REQUEST_ID {
                     if let Ok(data) = frame.data().try_into() {
-                        return self.lss.on_request(data);
+                        return self.lss.on_request(data).map(LssMessage::into_frame);
                     }
                 }
             }
