@@ -1,3 +1,5 @@
+// TODO migrate to darling
+
 use proc_macro::TokenStream;
 use std::collections::BTreeSet;
 
@@ -5,6 +7,11 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::*;
+
+use crate::object::Object;
+
+mod eds;
+mod object;
 
 #[proc_macro_derive(OdData, attributes(canopen))]
 pub fn derive_interactive(input: TokenStream) -> TokenStream {
@@ -45,6 +52,20 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
     let od_size = objects.len();
     check_for_duplicates(&objects)?;
 
+    if let Some(top_level_attr) = ast
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("canopen"))
+    {
+        top_level_attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("eds_path") {
+                let path: LitStr = meta.value()?.parse()?;
+                eds::write_eds(std::path::Path::new(&path.value()), &objects).unwrap()
+            }
+            Ok(())
+        })?;
+    }
+
     let indices = objects.iter().map(|v| v.index);
     let subindices = objects.iter().map(|v| v.subindex);
     let flags = objects.iter().map(Object::flags);
@@ -70,48 +91,6 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
     })
 }
 
-#[derive(Eq)]
-struct Object {
-    index: u16,
-    subindex: u8,
-    read_only: bool,
-    write_only: bool,
-    ident: Ident,
-}
-
-impl Object {
-    fn flags(&self) -> TokenStream2 {
-        let mut flags = quote!(::canopen::objectdictionary::object::ObjectFlags::empty());
-        if self.read_only {
-            flags = quote!(#flags.set_read_only());
-        }
-        if self.write_only {
-            flags = quote!(#flags.set_write_only());
-        }
-        flags
-    }
-}
-
-impl Ord for Object {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.index
-            .cmp(&other.index)
-            .then_with(|| self.subindex.cmp(&other.subindex))
-    }
-}
-
-impl PartialOrd for Object {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Object {
-    fn eq(&self, other: &Self) -> bool {
-        self.index == other.index && self.subindex == other.subindex
-    }
-}
-
 fn field_to_objects(field: &Field) -> Vec<Result<Object>> {
     let ident = field.ident.as_ref().expect("field should have name");
     let objects: Vec<_> = field
@@ -119,7 +98,7 @@ fn field_to_objects(field: &Field) -> Vec<Result<Object>> {
         .iter()
         .filter_map(|attr| {
             if attr.path().is_ident("canopen") {
-                Some(attr_to_object(attr, ident.clone()))
+                Some(Object::new(attr, ident.clone(), field.ty.clone()))
             } else {
                 None
             }
@@ -133,50 +112,6 @@ fn field_to_objects(field: &Field) -> Vec<Result<Object>> {
     } else {
         objects
     }
-}
-
-fn attr_to_object(attr: &Attribute, ident: Ident) -> Result<Object> {
-    let mut index: Option<u16> = None;
-    let mut subindex: u8 = 0;
-    let mut read_only = false;
-    let mut write_only = false;
-    attr.parse_nested_meta(|meta| {
-        if meta.path.is_ident("index") {
-            let val: LitInt = meta.value()?.parse()?;
-            index = Some(val.base10_parse()?);
-        }
-        if meta.path.is_ident("subindex") {
-            let val: LitInt = meta.value()?.parse()?;
-            subindex = val.base10_parse()?;
-        }
-        if meta.path.is_ident("read_only") {
-            if write_only {
-                return Err(Error::new(
-                    attr.span(),
-                    "Object cannot be both read-only and write-only",
-                ));
-            }
-            read_only = true;
-        }
-        if meta.path.is_ident("write_only") {
-            if read_only {
-                return Err(Error::new(
-                    attr.span(),
-                    "Object cannot be both read-only and write-only",
-                ));
-            }
-            write_only = true;
-        }
-        Ok(())
-    })?;
-    let index = index.ok_or(Error::new(attr.span(), "Object must declare `index`"))?;
-    Ok(Object {
-        index,
-        subindex,
-        read_only,
-        write_only,
-        ident,
-    })
 }
 
 // expects objects to be sorted
