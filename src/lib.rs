@@ -17,8 +17,8 @@ pub mod sdo;
 pub mod slot;
 
 pub struct Message<const N: usize> {
-    can_id: StandardId,
-    data: [u8; N],
+    pub can_id: StandardId,
+    pub data: [u8; N],
 }
 
 impl<const N: usize> Message<N> {
