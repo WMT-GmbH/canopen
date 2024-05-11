@@ -178,7 +178,7 @@ fn test_segmented_upload() {
 fn test_segmented_upload_with_known_size() {
     #[derive(OdData)]
     struct Data {
-        #[canopen(index = 1, readonly)]
+        #[canopen(index = 1, read_only)]
         obj: &'static str,
     }
 

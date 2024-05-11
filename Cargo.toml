@@ -5,6 +5,8 @@ authors = ["Dimitri Polonski <dimi.polonski@gmail.com>"]
 edition = "2021"
 keywords = ["embedded-hal"]
 
+[workspace]
+members = ["canopen-derive"]
 
 [dependencies]
 embedded-can = "0.4.1"

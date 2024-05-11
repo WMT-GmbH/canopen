@@ -1,14 +1,12 @@
-// TODO migrate to darling
-
 use proc_macro::TokenStream;
 use std::collections::BTreeSet;
 
+use darling::{Error, Result};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::spanned::Spanned;
 use syn::*;
 
-use crate::object::Object;
+use crate::object::{field_to_objects, Object};
 
 mod eds;
 mod object;
@@ -17,7 +15,7 @@ mod object;
 pub fn derive_interactive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as ItemStruct);
     od_data_impl(&ast)
-        .unwrap_or_else(|e| e.to_compile_error())
+        .unwrap_or_else(|e| e.write_errors())
         .into()
 }
 
@@ -28,25 +26,19 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
 
     match &ast.fields {
         Fields::Named(_) => {}
-        _ => return Err(Error::new(ast.span(), "struct must have named fields")),
+        _ => return Err(Error::custom("struct must have named fields").with_span(ast)),
     }
 
     // convert fields to Objects's or collect per-field errors into on large error
-    let mut objects = ast.fields.iter().map(field_to_objects).flatten().fold(
-        Ok(Vec::new()),
-        |acc: Result<Vec<Object>>, var| match (acc, var) {
-            (Ok(mut vec), Ok(var)) => {
-                vec.push(var);
-                Ok(vec)
-            }
-            (Err(acc_err), Ok(_)) => Err(acc_err),
-            (Err(mut acc_err), Err(e)) => {
-                acc_err.combine(e);
-                Err(acc_err)
-            }
-            (Ok(_), Err(e)) => Err(e),
-        },
-    )?;
+    let mut errors = Error::accumulator();
+
+    let mut objects: Vec<Object> = ast
+        .fields
+        .iter()
+        .filter_map(|field| errors.handle(field_to_objects(field)))
+        .flatten()
+        .collect();
+    errors.finish()?;
 
     objects.sort_unstable_by_key(|a| (a.index, a.subindex));
     let od_size = objects.len();
@@ -91,29 +83,6 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
     })
 }
 
-fn field_to_objects(field: &Field) -> Vec<Result<Object>> {
-    let ident = field.ident.as_ref().expect("field should have name");
-    let objects: Vec<_> = field
-        .attrs
-        .iter()
-        .filter_map(|attr| {
-            if attr.path().is_ident("canopen") {
-                Some(Object::new(attr, ident.clone(), field.ty.clone()))
-            } else {
-                None
-            }
-        })
-        .collect();
-    if objects.is_empty() {
-        vec![Err(Error::new(
-            field.span(),
-            "field must have #[canopen()] attribute",
-        ))]
-    } else {
-        objects
-    }
-}
-
 // expects objects to be sorted
 fn check_for_duplicates(objects: &[Object]) -> Result<()> {
     let Some((first, rest)) = objects.split_first() else {
@@ -131,21 +100,12 @@ fn check_for_duplicates(objects: &[Object]) -> Result<()> {
         }
     }
 
-    if let Some(e) = duplicates
-        .into_iter()
-        .map(|object| {
-            Error::new(
-                object.ident.span(),
-                "Duplicate index and subindex combination",
-            )
-        })
-        .reduce(|mut acc, e| {
-            acc.combine(e);
-            acc
-        })
-    {
-        Err(e)
-    } else {
-        Ok(())
+    let mut errors = Error::accumulator();
+    for object in duplicates {
+        errors.push(
+            Error::custom("Duplicate index and subindex combination").with_span(&object.ident),
+        );
     }
+    errors.finish()?;
+    Ok(())
 }

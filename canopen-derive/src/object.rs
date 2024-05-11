@@ -1,79 +1,82 @@
+use std::slice;
+
+use darling::{Error, FromAttributes, Result};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
-use std::cell::Cell;
-use syn::parse::ParseStream;
-use syn::spanned::Spanned;
 use syn::*;
 
-#[derive(Eq)]
+pub fn field_to_objects(field: &Field) -> Result<Vec<Object>> {
+    let ident = field.ident.as_ref().expect("field should have name");
+    let mut errors = darling::Error::accumulator();
+    let objects: Vec<Object> = field
+        .attrs
+        .iter()
+        .filter_map(|attr| errors.handle(Object::new(attr, ident.clone(), &field.ty)))
+        .collect();
+
+    errors.finish()?;
+
+    if objects.is_empty() {
+        return Err(
+            darling::Error::custom("field must have at least one canopen attribute")
+                .with_span(field),
+        );
+    }
+
+    Ok(objects)
+}
+
+#[derive(Eq, Debug)]
 pub struct Object {
+    pub ident: Ident,
     pub index: u16,
     pub subindex: u8,
     pub read_only: bool,
     pub write_only: bool,
     pub name: Option<String>,
     pub typ: Option<DataType>,
-    pub ident: Ident,
+}
+
+#[derive(darling::FromAttributes)]
+#[darling(attributes(canopen))]
+struct ObjectParser {
+    index: u16,
+    #[darling(default)]
+    subindex: Option<u8>,
+    #[darling(default)]
+    read_only: bool,
+    #[darling(default)]
+    write_only: bool,
+    #[darling(default)]
+    name: Option<String>,
+    #[darling(default, and_then = "Object::parse_datatype")]
+    typ: Option<DataType>,
 }
 
 impl Object {
-    pub fn new(attr: &Attribute, ident: Ident, ty: Type) -> Result<Object> {
-        let mut index: Option<u16> = None;
-        let mut subindex: u8 = 0;
-        let mut read_only = false;
-        let mut write_only = false;
-        let mut name = None;
-        let mut typ = None;
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("index") {
-                let val: LitInt = meta.value()?.parse()?;
-                index = Some(val.base10_parse()?);
-            }
-            if meta.path.is_ident("subindex") {
-                let val: LitInt = meta.value()?.parse()?;
-                subindex = val.base10_parse()?;
-            }
-            if meta.path.is_ident("read_only") {
-                if write_only {
-                    return Err(Error::new(
-                        attr.span(),
-                        "Object cannot be both read-only and write-only",
-                    ));
-                }
-                read_only = true;
-            }
-            if meta.path.is_ident("write_only") {
-                if read_only {
-                    return Err(Error::new(
-                        attr.span(),
-                        "Object cannot be both read-only and write-only",
-                    ));
-                }
-                write_only = true;
-            }
-            if meta.path.is_ident("name") {
-                let val: LitStr = meta.value()?.parse()?;
-                name = Some(val.value());
-            }
-            if meta.path.is_ident("type") {
-                typ = Some(Self::parse_datatype(meta.value()?)?);
-            }
-
-            Ok(())
-        })?;
-        let index = index.ok_or(Error::new(attr.span(), "Object must declare `index`"))?;
-        if typ.is_none() {
-            typ = Self::guess_type(ty);
+    pub fn new(attr: &Attribute, ident: Ident, typ: &Type) -> Result<Self> {
+        let object = ObjectParser::from_attributes(slice::from_ref(attr))?;
+        if object.read_only && object.write_only {
+            return Err(
+                darling::Error::custom("Object cannot be both read-only and write-only")
+                    .with_span(&attr),
+            );
         }
-        Ok(Object {
-            index,
-            subindex,
-            read_only,
-            write_only,
-            name,
-            typ,
+        let mut object = Object {
             ident,
-        })
+            index: object.index,
+            subindex: object.subindex.unwrap_or(0),
+            read_only: object.read_only,
+            write_only: object.write_only,
+            name: object.name,
+            typ: object.typ,
+        };
+
+        if object.typ.is_none() {
+            object.typ = Object::guess_type(typ);
+        }
+
+        Ok(object)
     }
 
     pub fn flags(&self) -> TokenStream {
@@ -87,44 +90,14 @@ impl Object {
         flags
     }
 
-    fn parse_datatype(parse_stream: ParseStream) -> Result<DataType> {
-        let val: LitInt = parse_stream.parse()?;
-        let num: u8 = val.base10_parse()?;
-        match num {
-            0x1 => Ok(DataType::BOOLEAN),
-            0x2 => Ok(DataType::INTEGER8),
-            0x3 => Ok(DataType::INTEGER16),
-            0x4 => Ok(DataType::INTEGER32),
-            0x5 => Ok(DataType::UNSIGNED8),
-            0x6 => Ok(DataType::UNSIGNED16),
-            0x7 => Ok(DataType::UNSIGNED32),
-            0x8 => Ok(DataType::REAL32),
-            0x9 => Ok(DataType::VISIBLE_STRING),
-            0xA => Ok(DataType::OCTET_STRING),
-            0xB => Ok(DataType::UNICODE_STRING),
-            0xC => Ok(DataType::TIME_OF_DAY),
-            0xD => Ok(DataType::TIME_DIFFERENCE),
-            0xF => Ok(DataType::DOMAIN),
-            0x10 => Ok(DataType::INTEGER24),
-            0x11 => Ok(DataType::REAL64),
-            0x12 => Ok(DataType::INTEGER40),
-            0x13 => Ok(DataType::INTEGER48),
-            0x14 => Ok(DataType::INTEGER56),
-            0x15 => Ok(DataType::INTEGER64),
-            0x16 => Ok(DataType::UNSIGNED24),
-            0x18 => Ok(DataType::UNSIGNED40),
-            0x19 => Ok(DataType::UNSIGNED48),
-            0x1A => Ok(DataType::UNSIGNED56),
-            0x1B => Ok(DataType::UNSIGNED64),
-            0x20 => Ok(DataType::PDO_COMMUNICATION_PARAMETER),
-            0x21 => Ok(DataType::PDO_MAPPING),
-            0x22 => Ok(DataType::SDO_PARAMETER),
-            0x23 => Ok(DataType::IDENTITY),
-            _ => Err(Error::new(val.span(), "Invalid data type")),
+    fn parse_datatype(val: u8) -> Result<Option<DataType>> {
+        match DataType::from_u8(val) {
+            Some(typ) => Ok(Some(typ)),
+            None => Err(Error::custom("invalid data type")),
         }
     }
 
-    fn guess_type(ty: Type) -> Option<DataType> {
+    fn guess_type(ty: &Type) -> Option<DataType> {
         match ty {
             Type::Path(TypePath { path, .. }) => {
                 if path.is_ident("bool") {
@@ -149,7 +122,7 @@ impl Object {
                     None
                 }
             }
-            Type::Reference(reference) => Self::guess_type(*reference.elem),
+            Type::Reference(reference) => Self::guess_type(&reference.elem),
             _ => None,
         }
     }
@@ -178,7 +151,7 @@ impl PartialEq for Object {
 
 /// Taken from CiA 301, Table 44: Object dictionary data types
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum DataType {
     BOOLEAN = 0x1,
     INTEGER8 = 0x2,
@@ -212,6 +185,43 @@ pub enum DataType {
     PDO_MAPPING = 0x21,
     SDO_PARAMETER = 0x22,
     IDENTITY = 0x23,
+}
+
+impl DataType {
+    fn from_u8(val: u8) -> Option<DataType> {
+        match val {
+            0x1 => Some(DataType::BOOLEAN),
+            0x2 => Some(DataType::INTEGER8),
+            0x3 => Some(DataType::INTEGER16),
+            0x4 => Some(DataType::INTEGER32),
+            0x5 => Some(DataType::UNSIGNED8),
+            0x6 => Some(DataType::UNSIGNED16),
+            0x7 => Some(DataType::UNSIGNED32),
+            0x8 => Some(DataType::REAL32),
+            0x9 => Some(DataType::VISIBLE_STRING),
+            0xA => Some(DataType::OCTET_STRING),
+            0xB => Some(DataType::UNICODE_STRING),
+            0xC => Some(DataType::TIME_OF_DAY),
+            0xD => Some(DataType::TIME_DIFFERENCE),
+            0xF => Some(DataType::DOMAIN),
+            0x10 => Some(DataType::INTEGER24),
+            0x11 => Some(DataType::REAL64),
+            0x12 => Some(DataType::INTEGER40),
+            0x13 => Some(DataType::INTEGER48),
+            0x14 => Some(DataType::INTEGER56),
+            0x15 => Some(DataType::INTEGER64),
+            0x16 => Some(DataType::UNSIGNED24),
+            0x18 => Some(DataType::UNSIGNED40),
+            0x19 => Some(DataType::UNSIGNED48),
+            0x1A => Some(DataType::UNSIGNED56),
+            0x1B => Some(DataType::UNSIGNED64),
+            0x20 => Some(DataType::PDO_COMMUNICATION_PARAMETER),
+            0x21 => Some(DataType::PDO_MAPPING),
+            0x22 => Some(DataType::SDO_PARAMETER),
+            0x23 => Some(DataType::IDENTITY),
+            _ => None,
+        }
+    }
 }
 
 /// Taken from CiA 301, Table 42: Object dictionary object definitions
