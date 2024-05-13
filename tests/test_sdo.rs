@@ -2,12 +2,15 @@ use embedded_can::Frame;
 
 use canopen::objectdictionary::od_cell::OdCell;
 use canopen::objectdictionary::OdData;
-use canopen::sdo::client::{ReadInto, ReadResult, SdoBuffer, SdoClient};
+use canopen::sdo::client::{ReadInto, ReadResult, SdoClient};
 use canopen::sdo::SdoServer;
 use canopen::{CanOpenService, NodeId, ObjectDictionary};
 use frame::CanOpenFrame;
 
 mod frame;
+
+const NODE_ID: NodeId = NodeId::NODE_ID_2;
+
 macro_rules! on_sdo_message {
     ($node:ident, $od:ident, $data:expr) => {
         $node.on_message(
@@ -33,7 +36,7 @@ fn test_expedited_download() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
+    let mut sdo_server = SdoServer::new(NODE_ID);
 
     let response_0 = on_sdo_message!(
         sdo_server,
@@ -72,7 +75,7 @@ fn test_segmented_download() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
+    let mut sdo_server = SdoServer::new(NODE_ID);
 
     // REQUEST_DOWNLOAD|SIZE_SPECIFIED, index=1, subindex=0, len=13
     let response_0 = on_sdo_message!(
@@ -116,18 +119,14 @@ fn read<B: ReadInto, OD, const N: usize>(
     od: &mut ObjectDictionary<OD, N>,
     buf: &mut B,
 ) {
-    let mut sdo_buffer = SdoBuffer::new();
-    let (mut sdo_producer, sdo_consumer) = sdo_buffer.split();
-    let mut sdo_client = SdoClient::new(NodeId::NODE_ID_2, sdo_consumer);
+    let sdo_client = SdoClient::new(NODE_ID);
     let mut sdo_reader = sdo_client.read(index, subindex);
 
     loop {
         match sdo_reader.poll(buf).unwrap() {
             ReadResult::NextRequest(message) => {
                 let response: CanOpenFrame = server.on_message(&message.into_frame(), od).unwrap();
-                sdo_producer
-                    .enqueue(response.data().try_into().unwrap())
-                    .unwrap();
+                sdo_client.on_message(&response);
             }
             ReadResult::Done => break,
             ReadResult::Waiting => unreachable!(),
@@ -145,7 +144,7 @@ fn test_expedited_upload() {
 
     let mut od = Data { obj: 0x04030201 }.into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
+    let mut sdo_server = SdoServer::new(NODE_ID);
 
     let mut data = 0_u32;
     read(1, 0, &mut sdo_server, &mut od, &mut data);
@@ -166,7 +165,7 @@ fn test_segmented_upload() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
+    let mut sdo_server = SdoServer::new(NODE_ID);
 
     let mut data = Vec::new();
     read(1, 0, &mut sdo_server, &mut od, &mut data);
@@ -187,7 +186,7 @@ fn test_segmented_upload_with_known_size() {
     }
     .into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
+    let mut sdo_server = SdoServer::new(NODE_ID);
 
     let mut data = Vec::new();
     read(1, 0, &mut sdo_server, &mut od, &mut data);
@@ -205,7 +204,7 @@ fn test_abort() {
 
     let mut od = Data { obj: 0 }.into_od();
 
-    let mut sdo_server = SdoServer::new(NodeId::NODE_ID_2);
+    let mut sdo_server = SdoServer::new(NODE_ID);
 
     let response_0 = on_sdo_message!(
         sdo_server,

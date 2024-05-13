@@ -11,32 +11,60 @@ use crate::{NodeId, SdoMessage};
 
 use super::*;
 
-pub type SdoBuffer = Slot<[u8; 8]>;
-pub type SdoProducer<'a> = Producer<'a, [u8; 8]>;
-pub type SdoConsumer<'a> = Consumer<'a, [u8; 8]>;
-
-pub struct SdoClient<'buf> {
+pub struct SdoClient {
     pub rx_cobid: StandardId,
     pub tx_cobid: StandardId,
-    sdo_consumer: SdoConsumer<'buf>,
+    buffer: heapless::mpmc::Q2<[u8; 8]>,
 }
 
-impl<'buf> SdoClient<'buf> {
-    pub fn new(node_id: NodeId, sdo_consumer: SdoConsumer<'buf>) -> Self {
+impl SdoClient {
+    pub fn new(node_id: NodeId) -> Self {
         SdoClient {
             rx_cobid: node_id.sdo_rx_cobid(),
             tx_cobid: node_id.sdo_tx_cobid(),
-            sdo_consumer,
+            buffer: heapless::mpmc::Q2::new(),
         }
     }
 
-    pub fn read<'s>(&'s mut self, index: u16, subindex: u8) -> Reader<'s, 'buf> {
+    pub fn on_message<F: Frame>(&self, frame: &F) {
+        if frame.id() == embedded_can::Id::Standard(self.tx_cobid) {
+            if let Ok(data) = frame.data().try_into() {
+                self.buffer.enqueue(data).ok(); // TODO error handling
+            }
+        }
+    }
+
+    pub fn read(&self, index: u16, subindex: u8) -> Reader {
         // clear SDO buffer
-        self.sdo_consumer.dequeue();
+        self.buffer.dequeue();
+        self.buffer.dequeue();
         Reader {
             sdo_client: self,
             state: ReaderState::Init { index, subindex },
         }
+    }
+
+    pub fn upload_request(&self, index: u16, sub_index: u8) -> SdoMessage {
+        let mut request = [0; 8];
+        request[0] = REQUEST_UPLOAD;
+        request[1] = index as u8;
+        request[2] = (index >> 8) as u8;
+        request[3] = sub_index;
+        self.message(request)
+    }
+
+    pub fn segmented_upload_request(&self, toggle_bit: bool) -> SdoMessage {
+        let mut request = [0; 8];
+        request[0] = if toggle_bit {
+            REQUEST_SEGMENT_UPLOAD | TOGGLE_BIT
+        } else {
+            REQUEST_SEGMENT_UPLOAD
+        };
+        self.message(request)
+    }
+
+    fn message(&self, data: [u8; 8]) -> SdoMessage {
+        SdoMessage::new(self.rx_cobid, data)
     }
 }
 
@@ -44,8 +72,8 @@ pub trait ReadInto {
     fn read_into(&mut self, buf: &[u8]) -> Result<(), ParseError>;
 }
 
-pub struct Reader<'s, 'buf> {
-    sdo_client: &'s mut SdoClient<'buf>,
+pub struct Reader<'a> {
+    sdo_client: &'a SdoClient,
     state: ReaderState,
 }
 
@@ -56,14 +84,14 @@ enum ReaderState {
     Done,
 }
 
-impl Reader<'_, '_> {
+impl Reader<'_> {
     pub fn poll<B: ReadInto>(
         &mut self,
         buf: &mut B,
     ) -> Result<ReadResult<SdoMessage>, ProtocolError> {
         match &self.state {
             ReaderState::Init { index, subindex } => {
-                let message = self.message(upload_request(*index, *subindex));
+                let message = self.sdo_client.upload_request(*index, *subindex);
                 self.state = ReaderState::RequestSent {
                     index: *index,
                     subindex: *subindex,
@@ -72,7 +100,7 @@ impl Reader<'_, '_> {
             }
             ReaderState::Done => Ok(ReadResult::Done),
             other => {
-                let Some(response) = self.sdo_client.sdo_consumer.dequeue() else {
+                let Some(response) = self.sdo_client.buffer.dequeue() else {
                     return Ok(ReadResult::Waiting);
                 };
                 match response_css(&response) {
@@ -103,7 +131,7 @@ impl Reader<'_, '_> {
         } else {
             self.state = ReaderState::Segmented { toggle_bit: false };
             // FIXME maybe use size in last 4 bytes
-            let message = self.message(segmented_upload_request(false));
+            let message = self.sdo_client.segmented_upload_request(false);
             Ok(ReadResult::NextRequest(message))
         }
     }
@@ -128,13 +156,9 @@ impl Reader<'_, '_> {
         } else {
             *toggle_bit = !*toggle_bit;
             let toggle_bit = *toggle_bit;
-            let message = self.message(segmented_upload_request(toggle_bit));
+            let message = self.sdo_client.segmented_upload_request(toggle_bit);
             Ok(ReadResult::NextRequest(message))
         }
-    }
-
-    fn message(&self, data: [u8; 8]) -> SdoMessage {
-        SdoMessage::new(self.sdo_client.rx_cobid, data)
     }
 }
 
@@ -142,15 +166,6 @@ pub enum ReadResult<F> {
     NextRequest(F),
     Waiting,
     Done,
-}
-
-pub fn upload_request(index: u16, sub_index: u8) -> [u8; 8] {
-    let mut request = [0; 8];
-    request[0] = REQUEST_UPLOAD;
-    request[1] = index as u8;
-    request[2] = (index >> 8) as u8;
-    request[3] = sub_index;
-    request
 }
 
 pub fn download_request<T: SdoValue>(index: u16, sub_index: u8, val: T) -> [u8; 8] {
@@ -183,16 +198,6 @@ fn check_response_index(
     } else {
         Ok(())
     }
-}
-
-pub fn segmented_upload_request(toggle_bit: bool) -> [u8; 8] {
-    let mut request = [0; 8];
-    request[0] = if toggle_bit {
-        REQUEST_SEGMENT_UPLOAD | TOGGLE_BIT
-    } else {
-        REQUEST_SEGMENT_UPLOAD
-    };
-    request
 }
 
 pub fn parse_upload_response<T: SdoValue>(
