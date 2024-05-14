@@ -332,7 +332,7 @@ impl<'a> Lss<'a> {
         let id_number = request[1..5].try_into().unwrap(); // Infallible
         let id_number = u32::from_le_bytes(id_number);
         let bit_checked = request[5]; // Number of unchecked bits
-        let lss_sub = request[6]; // index into lss_address
+        let lss_sub = request[6]; // index into lss_address TODO check out of bounds
         let lss_next = request[7];
 
         if bit_checked == 128 {

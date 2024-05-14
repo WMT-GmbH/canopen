@@ -1,12 +1,8 @@
-#![allow(unused)]
-
 use core::array::TryFromSliceError;
 use core::fmt::Debug;
 
 use embedded_can::{Frame, StandardId};
 
-use crate::objectdictionary::datalink::WriteData;
-use crate::slot::{Consumer, Producer, Slot};
 use crate::{NodeId, SdoMessage};
 
 use super::*;
@@ -99,7 +95,7 @@ impl Reader<'_> {
                 Ok(ReadResult::NextRequest(message))
             }
             ReaderState::Done => Ok(ReadResult::Done),
-            other => {
+            _ => {
                 let Some(response) = self.sdo_client.buffer.dequeue() else {
                     return Ok(ReadResult::Waiting);
                 };

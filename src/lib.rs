@@ -14,7 +14,6 @@ pub mod nmt;
 pub mod objectdictionary;
 pub mod pdo;
 pub mod sdo;
-pub mod slot;
 
 pub struct Message<const N: usize> {
     pub can_id: StandardId,

@@ -14,9 +14,6 @@ atomic_float = { version = "1.0.0", default-features = false }
 canopen-derive = { path = "canopen-derive" }
 heapless = "0.8.0"
 
-[target.'cfg(loom)'.dependencies]
-loom = { version = "0.7.2", features = ["checkpoint"] }
-
 [dev-dependencies]
 trybuild = "1.0"
 
