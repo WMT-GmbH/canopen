@@ -7,7 +7,7 @@ use syn::*;
 
 pub fn field_to_objects(field: &Field) -> Result<Vec<Object>> {
     let ident = field.ident.as_ref().expect("field should have name");
-    let mut errors = darling::Error::accumulator();
+    let mut errors = Error::accumulator();
     let objects: Vec<Object> = field
         .attrs
         .iter()
@@ -18,8 +18,7 @@ pub fn field_to_objects(field: &Field) -> Result<Vec<Object>> {
 
     if objects.is_empty() {
         return Err(
-            darling::Error::custom("field must have at least one canopen attribute")
-                .with_span(field),
+            Error::custom("field must have at least one canopen attribute").with_span(field),
         );
     }
 
@@ -58,8 +57,7 @@ impl Object {
         let object = ObjectParser::from_attributes(slice::from_ref(attr))?;
         if object.read_only && object.write_only {
             return Err(
-                darling::Error::custom("Object cannot be both read-only and write-only")
-                    .with_span(&attr),
+                Error::custom("Object cannot be both read-only and write-only").with_span(&attr),
             );
         }
         let mut object = Object {
@@ -88,6 +86,10 @@ impl Object {
             flags = quote!(#flags.set_write_only());
         }
         flags
+    }
+
+    pub fn name(&self) -> String {
+        self.name.clone().unwrap_or_else(|| self.ident.to_string())
     }
 
     fn parse_datatype(val: u8) -> Result<Option<DataType>> {
@@ -225,7 +227,7 @@ impl DataType {
 }
 
 /// Taken from CiA 301, Table 42: Object dictionary object definitions
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, unused)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ObjectType {
     NULL = 0x0,

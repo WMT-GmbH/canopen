@@ -10,6 +10,21 @@ pub mod object;
 pub mod od_cell;
 
 use crate::objectdictionary::object::{ObjectFlags, ObjectInfo};
+
+/// # Derive macro for `OdData`
+///
+/// ## Example
+/// ```
+/// use canopen::objectdictionary::OdData;
+///
+/// #[derive(Default, OdData)]
+/// struct Data {
+///     #[canopen(index = 0x2000)]
+///     number: u8
+/// }
+///
+/// let od = Data::default().into_od();
+/// ```
 pub use canopen_derive::OdData;
 
 pub trait OdData {
