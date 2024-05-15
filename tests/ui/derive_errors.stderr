@@ -1,10 +1,10 @@
-error: field must have #[canopen()] attribute
+error: field must have at least one #[canopen()] attribute
  --> tests/ui/derive_errors.rs:5:5
   |
 5 |     a: u8,
   |     ^^^^^
 
-error: Object must declare `index`
+error: Missing field `index`
  --> tests/ui/derive_errors.rs:6:5
   |
 6 |     #[canopen()]

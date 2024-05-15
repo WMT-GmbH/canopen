@@ -1,6 +1,6 @@
 use std::slice;
 
-use darling::{Error, FromAttributes, Result};
+use darling::{Error, FromAttributes, FromMeta, Result};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::*;
@@ -18,7 +18,7 @@ pub fn field_to_objects(field: &Field) -> Result<Vec<Object>> {
 
     if objects.is_empty() {
         return Err(
-            Error::custom("field must have at least one canopen attribute").with_span(field),
+            Error::custom("field must have at least one #[canopen()] attribute").with_span(field),
         );
     }
 
@@ -54,10 +54,11 @@ struct ObjectParser {
 
 impl Object {
     pub fn new(attr: &Attribute, ident: Ident, typ: &Type) -> Result<Self> {
-        let object = ObjectParser::from_attributes(slice::from_ref(attr))?;
+        let object =
+            ObjectParser::from_attributes(slice::from_ref(attr)).map_err(|e| e.with_span(attr))?;
         if object.read_only && object.write_only {
             return Err(
-                Error::custom("Object cannot be both read-only and write-only").with_span(&attr),
+                Error::custom("Object cannot be both read-only and write-only").with_span(attr),
             );
         }
         let mut object = Object {
@@ -92,38 +93,26 @@ impl Object {
         self.name.clone().unwrap_or_else(|| self.ident.to_string())
     }
 
-    fn parse_datatype(val: u8) -> Result<Option<DataType>> {
-        match DataType::from_u8(val) {
-            Some(typ) => Ok(Some(typ)),
-            None => Err(Error::custom("invalid data type")),
+    fn parse_datatype(val: Expr) -> Result<Option<DataType>> {
+        match val {
+            Expr::Lit(ExprLit { lit, .. }) => {
+                let num = u8::from_value(&lit)?;
+                match DataType::from_u8(num) {
+                    Some(typ) => Ok(Some(typ)),
+                    None => Err(Error::custom("invalid data type")),
+                }
+            }
+            Expr::Path(ExprPath { path, .. }) => match DataType::from_rust_type(&path) {
+                Some(typ) => Ok(Some(typ)),
+                None => Err(Error::custom("invalid data type")),
+            },
+            _ => Err(Error::unexpected_expr_type(&val)),
         }
     }
 
     fn guess_type(ty: &Type) -> Option<DataType> {
         match ty {
-            Type::Path(TypePath { path, .. }) => {
-                if path.is_ident("bool") {
-                    Some(DataType::BOOLEAN)
-                } else if path.is_ident("i8") {
-                    Some(DataType::INTEGER8)
-                } else if path.is_ident("i16") {
-                    Some(DataType::INTEGER16)
-                } else if path.is_ident("i32") {
-                    Some(DataType::INTEGER32)
-                } else if path.is_ident("u8") {
-                    Some(DataType::UNSIGNED8)
-                } else if path.is_ident("u16") {
-                    Some(DataType::UNSIGNED16)
-                } else if path.is_ident("u32") {
-                    Some(DataType::UNSIGNED32)
-                } else if path.is_ident("f32") {
-                    Some(DataType::REAL32)
-                } else if path.is_ident("str") {
-                    Some(DataType::OCTET_STRING)
-                } else {
-                    None
-                }
-            }
+            Type::Path(TypePath { path, .. }) => DataType::from_rust_type(path),
             Type::Reference(reference) => Self::guess_type(&reference.elem),
             _ => None,
         }
@@ -224,6 +213,30 @@ impl DataType {
             _ => None,
         }
     }
+
+    fn from_rust_type(path: &Path) -> Option<DataType> {
+        if path.is_ident("bool") {
+            Some(DataType::BOOLEAN)
+        } else if path.is_ident("i8") {
+            Some(DataType::INTEGER8)
+        } else if path.is_ident("i16") {
+            Some(DataType::INTEGER16)
+        } else if path.is_ident("i32") {
+            Some(DataType::INTEGER32)
+        } else if path.is_ident("u8") {
+            Some(DataType::UNSIGNED8)
+        } else if path.is_ident("u16") {
+            Some(DataType::UNSIGNED16)
+        } else if path.is_ident("u32") {
+            Some(DataType::UNSIGNED32)
+        } else if path.is_ident("f32") {
+            Some(DataType::REAL32)
+        } else if path.is_ident("str") {
+            Some(DataType::OCTET_STRING)
+        } else {
+            None
+        }
+    }
 }
 
 /// Taken from CiA 301, Table 42: Object dictionary object definitions
@@ -237,4 +250,22 @@ pub enum ObjectType {
     VAR = 0x7,
     ARRAY = 0x8,
     RECORD = 0x9,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_datatype() {
+        let object =
+            ObjectParser::from_attributes(&[parse_quote!(#[canopen(index = 0x1000, typ = 0x1)])])
+                .expect("Failed to parse attribute");
+        assert_eq!(object.typ, Some(DataType::BOOLEAN));
+
+        let object =
+            ObjectParser::from_attributes(&[parse_quote!(#[canopen(index = 0x1000, typ = bool)])])
+                .expect("Failed to parse attribute");
+        assert_eq!(object.typ, Some(DataType::BOOLEAN));
+    }
 }
