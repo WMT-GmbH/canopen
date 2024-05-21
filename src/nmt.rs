@@ -3,7 +3,7 @@ use embedded_can::{Id, StandardId};
 use crate::{CanOpenService, NodeId, ObjectDictionary};
 
 pub struct Nmt<'a> {
-    node_id: NodeId,
+    pub(crate) node_id: NodeId,
     callback: Option<&'a mut dyn NmtCallback>,
 }
 

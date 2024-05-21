@@ -42,7 +42,7 @@ const LSS_STORE_FAILED: u8 = 0x02;
 pub static STANDARD_BAUDRATE_TABLE: &[u16] = &[1000, 800, 500, 250, 125, 100, 50, 20, 10];
 
 pub struct Lss<'a> {
-    pub node_id: NodeId,
+    pub(crate) node_id: Option<NodeId>,
     lss_address: [u32; 4],
     mode: LssMode,
     partial_command_state: PartialCommandState,
@@ -60,7 +60,7 @@ impl<'a> Lss<'a> {
     pub const INVALID_VENDOR_ID: u8 = 0;
 
     pub fn new(
-        node_id: NodeId,
+        node_id: Option<NodeId>,
         vendor_id: u32,
         product_code: u32,
         revision_number: u32,
@@ -92,14 +92,13 @@ impl<'a> Lss<'a> {
                 match request[1] {
                     0x00 => {
                         self.mode = LssMode::Wait;
-                        if let Some(callback) = self.callback.as_mut() {
-                            if self.node_id_changed {
-                                callback.on_new_node_id(self.node_id);
+                        match (&mut self.callback, self.node_id, self.node_id_changed) {
+                            (Some(callback), Some(node_id), true) => {
+                                callback.on_new_node_id(node_id);
                             }
+                            _ => {}
                         }
                         self.node_id_changed = false;
-                        // TODO maybe restart?
-                        //  https://github.com/CANopenNode/CANopenNode/blob/master/305/CO_LSSslave.c#L67-L77
                     }
                     0x01 => {
                         self.mode = LssMode::Configuration;
@@ -170,7 +169,7 @@ impl<'a> Lss<'a> {
             }
             INQUIRE_NODE_ID => {
                 // Inquire node id service
-                Some([INQUIRE_NODE_ID, self.node_id.raw(), 0, 0, 0, 0, 0, 0])
+                Some([INQUIRE_NODE_ID, self.lss_node_id(), 0, 0, 0, 0, 0, 0])
             }
             _ => None,
         };
@@ -178,10 +177,15 @@ impl<'a> Lss<'a> {
         result.map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response))
     }
 
+    fn lss_node_id(&self) -> u8 {
+        // CiA 305: a node-ID of 0xFF identifies a not configured CANopen device
+        self.node_id.map_or(0xFF, NodeId::raw)
+    }
+
     fn set_node_id(&mut self, node_id: u8) -> RequestResult {
         if let Some(node_id) = NodeId::new(node_id) {
-            self.node_id_changed = self.node_id != node_id;
-            self.node_id = node_id;
+            self.node_id_changed = self.node_id != Some(node_id);
+            self.node_id = Some(node_id);
             Some([CONFIGURE_NODE_ID, LSS_OK, 0, 0, 0, 0, 0, 0])
         } else {
             Some([CONFIGURE_NODE_ID, LSS_GENERIC_ERROR, 0, 0, 0, 0, 0, 0])
@@ -189,14 +193,13 @@ impl<'a> Lss<'a> {
     }
 
     fn store_configuration(&mut self) -> RequestResult {
-        let status = if let Some(callback) = self.callback.as_mut() {
-            match callback.store_configuration(self.node_id) {
+        let status = match (&mut self.callback, self.node_id) {
+            (Some(callback), Some(node_id)) => match callback.store_configuration(node_id) {
                 Ok(()) => LSS_OK,
                 Err(StoreConfigurationError::NotSupported) => LSS_GENERIC_ERROR,
                 Err(StoreConfigurationError::Failed) => LSS_STORE_FAILED,
-            }
-        } else {
-            LSS_GENERIC_ERROR
+            },
+            _ => LSS_GENERIC_ERROR,
         };
 
         Some([STORE_CONFIGURATION, status, 0, 0, 0, 0, 0, 0])
@@ -357,7 +360,12 @@ impl<'a> Lss<'a> {
 }
 
 pub trait LssCallback {
+    /// We're in the "LSS configuration" state and the "Store configuration" command was sent
     fn store_configuration(&mut self, node_id: NodeId) -> Result<(), StoreConfigurationError>;
+    /// We're changing from the "LSS configuration" state to the "LSS waiting" state
+    /// and a new node id was set
+    ///
+    /// This might be the time to reset the node
     fn on_new_node_id(&mut self, node_id: NodeId);
 }
 
@@ -438,7 +446,7 @@ mod test {
 
     #[test]
     fn test_identify() {
-        let mut lss = Lss::new(NodeId::NODE_ID_0, 1, 2, 3, 4);
+        let mut lss = Lss::new(Some(NodeId::NODE_ID_0), 1, 2, 3, 4);
 
         let exact = IdentifyRequest {
             vendor_id: 1,

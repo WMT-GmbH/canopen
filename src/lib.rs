@@ -52,7 +52,7 @@ impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for CanO
                 if id == Nmt::NMT_REQUEST_ID {
                     match frame.data() {
                         &[command_code, node_id]
-                            if node_id == 0 || node_id == self.lss.node_id.raw() =>
+                            if node_id == 0 || node_id == self.nmt.node_id.raw() =>
                         {
                             return self.nmt.on_request(command_code);
                         }
@@ -75,6 +75,7 @@ impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for CanO
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[repr(transparent)]
 pub struct NodeId(u8);
 
 impl NodeId {
