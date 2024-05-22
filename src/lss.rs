@@ -335,7 +335,7 @@ impl<'a> Lss<'a> {
         let id_number = request[1..5].try_into().unwrap(); // Infallible
         let id_number = u32::from_le_bytes(id_number);
         let bit_checked = request[5]; // Number of unchecked bits
-        let lss_sub = request[6]; // index into lss_address TODO check out of bounds
+        let lss_sub = request[6]; // index into lss_address
         let lss_next = request[7];
 
         if bit_checked == 128 {
@@ -348,7 +348,7 @@ impl<'a> Lss<'a> {
             if (self.lss_address[lss_sub as usize] ^ id_number) & bit_mask == 0 {
                 // Checked bits match
                 self.expected_lss_sub = lss_next; // only update lss_next if we're still matching
-                if lss_sub == 3 && bit_checked == 0 {
+                if bit_checked == 0 && lss_next < lss_sub {
                     // Complete match, scan completed
                     self.mode = LssMode::Configuration;
                 }
