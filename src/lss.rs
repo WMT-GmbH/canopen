@@ -1,5 +1,6 @@
 use embedded_can::{Id, StandardId};
 
+use crate::objectdictionary::OdArray;
 use crate::{CanOpenService, ObjectDictionary};
 use crate::{LssMessage, NodeId};
 
@@ -41,6 +42,25 @@ const LSS_STORE_FAILED: u8 = 0x02;
 
 pub static STANDARD_BAUDRATE_TABLE: &[u16] = &[1000, 800, 500, 250, 125, 100, 50, 20, 10];
 
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct Identity {
+    pub vendor_id: u32,
+    pub product_code: u32,
+    pub revision_number: u32,
+    pub serial_number: u32,
+}
+
+impl Identity {
+    pub fn into_array(self) -> OdArray<u32, 4> {
+        OdArray::new([
+            self.vendor_id,
+            self.product_code,
+            self.revision_number,
+            self.serial_number,
+        ])
+    }
+}
+
 pub struct Lss<'a> {
     pub(crate) node_id: Option<NodeId>,
     lss_address: [u32; 4],
@@ -59,16 +79,10 @@ impl<'a> Lss<'a> {
     /// Other values must be registered with CiA.
     pub const INVALID_VENDOR_ID: u8 = 0;
 
-    pub fn new(
-        node_id: Option<NodeId>,
-        vendor_id: u32,
-        product_code: u32,
-        revision_number: u32,
-        serial_number: u32,
-    ) -> Self {
+    pub fn new(node_id: Option<NodeId>, identity: Identity) -> Self {
         Lss {
             node_id,
-            lss_address: [vendor_id, product_code, revision_number, serial_number],
+            lss_address: identity.into_array().array,
             mode: LssMode::Wait,
             partial_command_state: PartialCommandState::Init,
             expected_lss_sub: 0,
@@ -446,7 +460,15 @@ mod test {
 
     #[test]
     fn test_identify() {
-        let mut lss = Lss::new(Some(NodeId::NODE_ID_0), 1, 2, 3, 4);
+        let mut lss = Lss::new(
+            Some(NodeId::NODE_ID_0),
+            Identity {
+                vendor_id: 1,
+                product_code: 2,
+                revision_number: 3,
+                serial_number: 4,
+            },
+        );
 
         let exact = IdentifyRequest {
             vendor_id: 1,
