@@ -29,10 +29,6 @@ impl<const N: usize> Message<N> {
 pub type SdoMessage = Message<8>;
 pub type LssMessage = Message<8>;
 
-pub trait CanOpenService<F: embedded_can::Frame, T, const N: usize> {
-    fn on_message(&mut self, frame: &F, od: &mut ObjectDictionary<T, N>) -> Option<F>;
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct NodeId(u8);

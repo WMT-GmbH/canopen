@@ -4,7 +4,7 @@ use canopen::objectdictionary::od_cell::OdCell;
 use canopen::objectdictionary::OdData;
 use canopen::sdo::client::{ReadInto, ReadResult, SdoClient};
 use canopen::sdo::SdoServer;
-use canopen::{CanOpenService, NodeId, ObjectDictionary};
+use canopen::{NodeId, ObjectDictionary};
 use frame::CanOpenFrame;
 
 mod frame;

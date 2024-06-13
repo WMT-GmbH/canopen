@@ -1,7 +1,6 @@
 use embedded_can::{Id, StandardId};
 
 use crate::objectdictionary::OdArray;
-use crate::{CanOpenService, ObjectDictionary};
 use crate::{LssMessage, NodeId};
 
 type RequestResult = Option<[u8; 8]>;
@@ -61,17 +60,16 @@ impl Identity {
     }
 }
 
-pub struct Lss<'a> {
+pub struct Lss {
     pub(crate) node_id: Option<NodeId>,
     lss_address: [u32; 4],
     mode: LssMode,
     partial_command_state: PartialCommandState,
     expected_lss_sub: u8, // used in fast_scan
     node_id_changed: bool,
-    callback: Option<&'a mut dyn LssCallback>,
 }
 
-impl<'a> Lss<'a> {
+impl Lss {
     pub const LSS_REQUEST_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E5) };
     pub const LSS_RESPONSE_ID: StandardId = unsafe { StandardId::new_unchecked(0x7E4) };
 
@@ -87,15 +85,29 @@ impl<'a> Lss<'a> {
             partial_command_state: PartialCommandState::Init,
             expected_lss_sub: 0,
             node_id_changed: false,
-            callback: None,
         }
     }
 
-    pub fn add_callback(&mut self, callback: &'a mut dyn LssCallback) {
-        self.callback = Some(callback);
+    pub fn on_message<F: embedded_can::Frame>(
+        &mut self,
+        frame: &F,
+        callback: &mut impl LssCallback,
+    ) -> Option<F> {
+        if frame.id() != Id::Standard(Lss::LSS_REQUEST_ID) {
+            return None;
+        }
+        if let Ok(data) = frame.data().try_into() {
+            self.on_request(data, callback).map(LssMessage::into_frame)
+        } else {
+            None
+        }
     }
 
-    pub fn on_request(&mut self, request: &[u8; 8]) -> Option<LssMessage> {
+    pub fn on_request(
+        &mut self,
+        request: &[u8; 8],
+        callback: &mut impl LssCallback,
+    ) -> Option<LssMessage> {
         let command_specifier = request[0];
 
         // check services that don't care about mode
@@ -106,12 +118,10 @@ impl<'a> Lss<'a> {
                 match request[1] {
                     0x00 => {
                         self.mode = LssMode::Wait;
-                        match (&mut self.callback, self.node_id, self.node_id_changed) {
-                            (Some(callback), Some(node_id), true) => {
-                                callback.on_new_node_id(node_id);
-                            }
-                            _ => {}
+                        if let (Some(node_id), true) = (self.node_id, self.node_id_changed) {
+                            callback.on_new_node_id(node_id);
                         }
+
                         self.node_id_changed = false;
                     }
                     0x01 => {
@@ -129,7 +139,7 @@ impl<'a> Lss<'a> {
                 // Switch state selective service
                 return self
                     .switch_selective(request)
-                    .map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response));
+                    .map(|response| LssMessage::new(Self::LSS_RESPONSE_ID, response));
             }
             IDENTIFY_VENDOR_ID
             | IDENTIFY_PRODUCT_CODE
@@ -140,12 +150,12 @@ impl<'a> Lss<'a> {
                 // LSS identify remote slave service
                 return self
                     .identify(request)
-                    .map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response));
+                    .map(|response| LssMessage::new(Self::LSS_RESPONSE_ID, response));
             }
             FAST_SCAN => {
                 return self
                     .fast_scan(request)
-                    .map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response));
+                    .map(|response| LssMessage::new(Self::LSS_RESPONSE_ID, response));
             }
             _ => {
                 self.partial_command_state = PartialCommandState::Init;
@@ -172,7 +182,7 @@ impl<'a> Lss<'a> {
             }
             STORE_CONFIGURATION => {
                 // Store configuration service
-                self.store_configuration()
+                self.store_configuration(callback)
             }
             INQUIRE_VENDOR_ID
             | INQUIRE_PRODUCT_CODE
@@ -188,7 +198,7 @@ impl<'a> Lss<'a> {
             _ => None,
         };
 
-        result.map(|response| LssMessage::new(Lss::LSS_RESPONSE_ID, response))
+        result.map(|response| LssMessage::new(Self::LSS_RESPONSE_ID, response))
     }
 
     fn lss_node_id(&self) -> u8 {
@@ -206,9 +216,9 @@ impl<'a> Lss<'a> {
         }
     }
 
-    fn store_configuration(&mut self) -> RequestResult {
-        let status = match (&mut self.callback, self.node_id) {
-            (Some(callback), Some(node_id)) => match callback.store_configuration(node_id) {
+    fn store_configuration(&mut self, callback: &mut impl LssCallback) -> RequestResult {
+        let status = match self.node_id {
+            Some(node_id) => match callback.store_configuration(node_id) {
                 Ok(()) => LSS_OK,
                 Err(StoreConfigurationError::NotSupported) => LSS_GENERIC_ERROR,
                 Err(StoreConfigurationError::Failed) => LSS_STORE_FAILED,
@@ -407,22 +417,19 @@ enum PartialCommandState {
     SwitchRevisionNumberCodeMatched,
 }
 
-impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for Lss<'_> {
-    fn on_message(&mut self, frame: &F, _: &mut ObjectDictionary<T, N>) -> Option<F> {
-        if frame.id() != Id::Standard(Lss::LSS_REQUEST_ID) {
-            return None;
-        }
-        if let Ok(data) = frame.data().try_into() {
-            self.on_request(data).map(LssMessage::into_frame)
-        } else {
-            None
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
+
+    struct NoopLssCallback;
+
+    impl LssCallback for NoopLssCallback {
+        fn store_configuration(&mut self, _: NodeId) -> Result<(), StoreConfigurationError> {
+            Ok(())
+        }
+
+        fn on_new_node_id(&mut self, _: NodeId) {}
+    }
 
     struct IdentifyRequest {
         vendor_id: u8,
@@ -433,29 +440,29 @@ mod test {
         serial_high: u8,
     }
 
-    fn test_identify_request(lss: &mut Lss<'_>, req: IdentifyRequest) -> Option<LssMessage> {
+    fn test_identify_request(lss: &mut Lss, req: IdentifyRequest) -> Option<LssMessage> {
         let mut request = [IDENTIFY_VENDOR_ID, req.vendor_id, 0, 0, 0, 0, 0, 0];
-        assert!(lss.on_request(&request).is_none());
+        assert!(lss.on_request(&request, &mut NoopLssCallback).is_none());
 
         request[0] = IDENTIFY_PRODUCT_CODE;
         request[1] = req.product_code;
-        assert!(lss.on_request(&request).is_none());
+        assert!(lss.on_request(&request, &mut NoopLssCallback).is_none());
 
         request[0] = IDENTIFY_REVISION_NUMBER_LOW;
         request[1] = req.revision_low;
-        assert!(lss.on_request(&request).is_none());
+        assert!(lss.on_request(&request, &mut NoopLssCallback).is_none());
 
         request[0] = IDENTIFY_REVISION_NUMBER_HIGH;
         request[1] = req.revision_high;
-        assert!(lss.on_request(&request).is_none());
+        assert!(lss.on_request(&request, &mut NoopLssCallback).is_none());
 
         request[0] = IDENTIFY_SERIAL_NUMBER_LOW;
         request[1] = req.serial_low;
-        assert!(lss.on_request(&request).is_none());
+        assert!(lss.on_request(&request, &mut NoopLssCallback).is_none());
 
         request[0] = IDENTIFY_SERIAL_NUMBER_HIGH;
         request[1] = req.serial_high;
-        lss.on_request(&request)
+        lss.on_request(&request, &mut NoopLssCallback)
     }
 
     #[test]

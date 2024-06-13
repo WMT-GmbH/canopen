@@ -2,7 +2,7 @@ use embedded_can::{Id, StandardId};
 
 use crate::objectdictionary::datalink::WriteData;
 use crate::objectdictionary::{ObjectDictionary, OdPosition};
-use crate::{CanOpenService, NodeId, SdoMessage};
+use crate::{NodeId, SdoMessage};
 
 use super::*;
 
@@ -30,19 +30,6 @@ pub struct SdoServer {
     state: State,
 }
 
-impl<F: embedded_can::Frame, T, const N: usize> CanOpenService<F, T, N> for SdoServer {
-    fn on_message(&mut self, frame: &F, od: &mut ObjectDictionary<T, N>) -> Option<F> {
-        if frame.id() != Id::Standard(self.rx_cobid) {
-            return None;
-        }
-        if let Ok(data) = frame.data().try_into() {
-            self.on_request(data, od).map(SdoMessage::into_frame)
-        } else {
-            None
-        }
-    }
-}
-
 impl SdoServer {
     pub fn new(node_id: NodeId) -> Self {
         SdoServer {
@@ -51,6 +38,21 @@ impl SdoServer {
             last_index: 0,
             last_subindex: 0,
             state: State::None,
+        }
+    }
+
+    pub fn on_message<F: embedded_can::Frame, T, const N: usize>(
+        &mut self,
+        frame: &F,
+        od: &mut ObjectDictionary<T, N>,
+    ) -> Option<F> {
+        if frame.id() != Id::Standard(self.rx_cobid) {
+            return None;
+        }
+        if let Ok(data) = frame.data().try_into() {
+            self.on_request(data, od).map(SdoMessage::into_frame)
+        } else {
+            None
         }
     }
 

@@ -141,7 +141,7 @@ impl PartialEq for Object {
 }
 
 /// Taken from CiA 301, Table 44: Object dictionary data types
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum DataType {
     BOOLEAN = 0x1,
@@ -240,7 +240,7 @@ impl DataType {
 }
 
 /// Taken from CiA 301, Table 42: Object dictionary object definitions
-#[allow(non_camel_case_types, unused)]
+#[allow(non_camel_case_types, unused, clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ObjectType {
     NULL = 0x0,
