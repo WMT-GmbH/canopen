@@ -104,7 +104,10 @@ impl Object {
             }
             Expr::Path(ExprPath { path, .. }) => match DataType::from_rust_type(&path) {
                 Some(typ) => Ok(Some(typ)),
-                None => Err(Error::custom("invalid data type")),
+                None => match DataType::from_str(&path) {
+                    Some(typ) => Ok(Some(typ)),
+                    None => Err(Error::custom("invalid data type")),
+                },
             },
             _ => Err(Error::unexpected_expr_type(&val)),
         }
@@ -211,6 +214,70 @@ impl DataType {
             0x22 => Some(DataType::SDO_PARAMETER),
             0x23 => Some(DataType::IDENTITY),
             _ => None,
+        }
+    }
+
+    fn from_str(path: &Path) -> Option<DataType> {
+        if path.is_ident("BOOLEAN") {
+            Some(DataType::BOOLEAN)
+        } else if path.is_ident("INTEGER8") {
+            Some(DataType::INTEGER8)
+        } else if path.is_ident("INTEGER16") {
+            Some(DataType::INTEGER16)
+        } else if path.is_ident("INTEGER32") {
+            Some(DataType::INTEGER32)
+        } else if path.is_ident("UNSIGNED8") {
+            Some(DataType::UNSIGNED8)
+        } else if path.is_ident("UNSIGNED16") {
+            Some(DataType::UNSIGNED16)
+        } else if path.is_ident("UNSIGNED32") {
+            Some(DataType::UNSIGNED32)
+        } else if path.is_ident("REAL32") {
+            Some(DataType::REAL32)
+        } else if path.is_ident("VISIBLE_STRING") {
+            Some(DataType::VISIBLE_STRING)
+        } else if path.is_ident("OCTET_STRING") {
+            Some(DataType::OCTET_STRING)
+        } else if path.is_ident("UNICODE_STRING") {
+            Some(DataType::UNICODE_STRING)
+        } else if path.is_ident("TIME_OF_DAY") {
+            Some(DataType::TIME_OF_DAY)
+        } else if path.is_ident("TIME_DIFFERENCE") {
+            Some(DataType::TIME_DIFFERENCE)
+        } else if path.is_ident("DOMAIN") {
+            Some(DataType::DOMAIN)
+        } else if path.is_ident("INTEGER24") {
+            Some(DataType::INTEGER24)
+        } else if path.is_ident("REAL64") {
+            Some(DataType::REAL64)
+        } else if path.is_ident("INTEGER40") {
+            Some(DataType::INTEGER40)
+        } else if path.is_ident("INTEGER48") {
+            Some(DataType::INTEGER48)
+        } else if path.is_ident("INTEGER56") {
+            Some(DataType::INTEGER56)
+        } else if path.is_ident("INTEGER64") {
+            Some(DataType::INTEGER64)
+        } else if path.is_ident("UNSIGNED24") {
+            Some(DataType::UNSIGNED24)
+        } else if path.is_ident("UNSIGNED40") {
+            Some(DataType::UNSIGNED40)
+        } else if path.is_ident("UNSIGNED48") {
+            Some(DataType::UNSIGNED48)
+        } else if path.is_ident("UNSIGNED56") {
+            Some(DataType::UNSIGNED56)
+        } else if path.is_ident("UNSIGNED64") {
+            Some(DataType::UNSIGNED64)
+        } else if path.is_ident("PDO_COMMUNICATION_PARAMETER") {
+            Some(DataType::PDO_COMMUNICATION_PARAMETER)
+        } else if path.is_ident("PDO_MAPPING") {
+            Some(DataType::PDO_MAPPING)
+        } else if path.is_ident("SDO_PARAMETER") {
+            Some(DataType::SDO_PARAMETER)
+        } else if path.is_ident("IDENTITY") {
+            Some(DataType::IDENTITY)
+        } else {
+            None
         }
     }
 
