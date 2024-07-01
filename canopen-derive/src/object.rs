@@ -5,13 +5,25 @@ use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::*;
 
-pub fn field_to_objects(field: &Field) -> Result<Vec<Object>> {
+pub fn extract_field_info(field: &Field) -> Result<FieldInfo> {
     let ident = field.ident.as_ref().expect("field should have name");
     let mut errors = Error::accumulator();
+    let mut records = Vec::new();
     let objects: Vec<Object> = field
         .attrs
         .iter()
-        .filter_map(|attr| errors.handle(Object::new(attr, ident.clone(), &field.ty)))
+        .filter_map(|attr| {
+            if let Ok(record) = RecordParser::from_attributes(slice::from_ref(attr)) {
+                records.push(Record {
+                    ident: ident.clone(),
+                    index: record.index,
+                    name: record.record,
+                });
+                None
+            } else {
+                errors.handle(Object::new(attr, ident.clone(), &field.ty))
+            }
+        })
         .collect();
 
     errors.finish()?;
@@ -22,7 +34,12 @@ pub fn field_to_objects(field: &Field) -> Result<Vec<Object>> {
         );
     }
 
-    Ok(objects)
+    Ok(FieldInfo { objects, records })
+}
+
+pub struct FieldInfo {
+    pub objects: Vec<Object>,
+    pub records: Vec<Record>,
 }
 
 #[derive(Eq, Debug)]
@@ -34,6 +51,13 @@ pub struct Object {
     pub write_only: bool,
     pub name: Option<String>,
     pub typ: Option<DataType>,
+}
+
+#[derive(Eq, Debug)]
+pub struct Record {
+    pub ident: Ident,
+    pub index: u16,
+    pub name: String,
 }
 
 #[derive(darling::FromAttributes)]
@@ -89,10 +113,6 @@ impl Object {
         flags
     }
 
-    pub fn name(&self) -> String {
-        self.name.clone().unwrap_or_else(|| self.ident.to_string())
-    }
-
     fn parse_datatype(val: Expr) -> Result<Option<DataType>> {
         match val {
             Expr::Lit(ExprLit { lit, .. }) => {
@@ -122,6 +142,13 @@ impl Object {
     }
 }
 
+#[derive(darling::FromAttributes)]
+#[darling(attributes(canopen))]
+pub struct RecordParser {
+    pub index: u16,
+    pub record: String,
+}
+
 // Implement Ord and PartialOrd for Object so we can sort them
 impl Ord for Object {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -140,6 +167,25 @@ impl PartialOrd for Object {
 impl PartialEq for Object {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index && self.subindex == other.subindex
+    }
+}
+
+// Implement Ord and PartialOrd for Record so we can sort them
+impl Ord for Record {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.index.cmp(&other.index)
+    }
+}
+
+impl PartialOrd for Record {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Record {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
     }
 }
 

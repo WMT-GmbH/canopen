@@ -3,32 +3,35 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 
+use crate::object::Record;
 use crate::Object;
 
-// expects objects to be sorted by index and subindex
-pub fn write_eds(path: &Path, objects: &[Object]) -> io::Result<()> {
+// expects objects and records to be sorted by index and subindex
+pub fn write_eds(path: &Path, objects: &[Object], records: &[Record]) -> io::Result<()> {
     let mut file = File::create(path).expect("Failed to create file");
 
     write_preamble(&mut file)?;
 
-    let mut object_iter = objects.iter().peekable();
-    let mut is_compound = false;
+    let mut record_iter = records.iter();
+    let mut record_cursor = record_iter.next();
+    let mut current_record = None;
 
-    while let Some(object) = object_iter.next() {
-        match object_iter.peek() {
-            Some(next_object) if object.index == next_object.index => {
-                if !is_compound {
-                    write_compound_object_top_level(&mut file, object)?;
-                }
-                is_compound = true;
-            }
-            _ => {
-                is_compound = false;
+    for object in objects {
+        // write record if it exists and matches the current object
+        if let Some(r) = record_cursor {
+            if r.index == object.index {
+                write_record(&mut file, r)?;
+                current_record = record_cursor;
+                record_cursor = record_iter.next();
             }
         }
-
-        write_object(&mut file, object, is_compound)?;
+        // reset current_record if the current object does not match
+        if !current_record.is_some_and(|r| r.index == object.index) {
+            current_record = None;
+        }
+        write_object(&mut file, object, current_record)?;
     }
+
     Ok(())
 }
 
@@ -43,26 +46,38 @@ fn write_preamble(file: &mut File) -> io::Result<()> {
     Ok(())
 }
 
-fn write_compound_object_top_level(file: &mut File, object: &Object) -> io::Result<()> {
-    // TODO don't hardcode ObjectType and ParameterName
+fn write_record(file: &mut File, object: &Record) -> io::Result<()> {
     writeln!(file)?;
     writeln!(file, "[{:X}]", object.index)?;
-    writeln!(file, "ParameterName={}", object.name())?;
+    writeln!(file, "ParameterName={}", object.name)?;
     writeln!(file, "ObjectType=0x09")?;
     Ok(())
 }
 
-fn write_object(file: &mut File, object: &Object, is_compound: bool) -> io::Result<()> {
+fn write_object(file: &mut File, object: &Object, parent: Option<&Record>) -> io::Result<()> {
     writeln!(file)?;
-    if object.subindex == 0 && !is_compound {
+
+    // [XXXX] or [XXXXsubXX]
+    if object.subindex == 0 && parent.is_none() {
         writeln!(file, "[{:X}]", object.index)?;
     } else {
         writeln!(file, "[{:X}sub{:X}]", object.index, object.subindex)?;
     }
-    writeln!(file, "ParameterName={}", object.name())?;
+    // ParameterName=...
+    let object_name = object.name.clone();
+    let record_name = parent.map(|r| r.name.clone());
+    let ident_name = object.ident.to_string();
+    writeln!(
+        file,
+        "ParameterName={}",
+        object_name.or(record_name).unwrap_or(ident_name)
+    )?;
+
+    // DataType=0xXXXX
     if let Some(typ) = object.typ {
         writeln!(file, "DataType=0x{:04X}", typ as u8)?;
     }
+    // AccessType=ro|wo|rw
     writeln!(
         file,
         "AccessType={}",

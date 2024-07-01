@@ -6,7 +6,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::*;
 
-use crate::object::{field_to_objects, Object};
+use crate::object::{extract_field_info, Object, Record};
 
 mod eds;
 mod object;
@@ -24,25 +24,12 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
 
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
-    match &ast.fields {
-        Fields::Named(_) => {}
-        _ => return Err(Error::custom("struct must have named fields").with_span(ast)),
+    if !matches!(ast.fields, Fields::Named(_)) {
+        return Err(Error::custom("struct must have named fields").with_span(ast));
     }
 
-    // convert fields to Objects's or collect per-field errors into on large error
-    let mut errors = Error::accumulator();
-
-    let mut objects: Vec<Object> = ast
-        .fields
-        .iter()
-        .filter_map(|field| errors.handle(field_to_objects(field)))
-        .flatten()
-        .collect();
-    errors.finish()?;
-
-    objects.sort_unstable_by_key(|a| (a.index, a.subindex));
+    let (objects, records) = get_objects_and_records(ast)?;
     let od_size = objects.len();
-    check_for_duplicates(&objects)?;
 
     if let Some(top_level_attr) = ast
         .attrs
@@ -52,7 +39,7 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
         top_level_attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("eds_path") {
                 let path: LitStr = meta.value()?.parse()?;
-                eds::write_eds(std::path::Path::new(&path.value()), &objects).unwrap()
+                eds::write_eds(std::path::Path::new(&path.value()), &objects, &records).unwrap()
             }
             Ok(())
         })?;
@@ -83,8 +70,35 @@ fn od_data_impl(ast: &ItemStruct) -> Result<TokenStream2> {
     })
 }
 
-// expects objects to be sorted
-fn check_for_duplicates(objects: &[Object]) -> Result<()> {
+/// convert fields to `Objects`s and `Record`s and sort/de-duplicate them
+fn get_objects_and_records(ast: &ItemStruct) -> Result<(Vec<Object>, Vec<Record>)> {
+    let mut errors = Error::accumulator();
+
+    let mut objects = Vec::new();
+    let mut records = Vec::new();
+    for field_info in ast
+        .fields
+        .iter()
+        .filter_map(|field| errors.handle(extract_field_info(field)))
+    {
+        objects.extend(field_info.objects);
+        records.extend(field_info.records);
+    }
+    errors.finish()?;
+
+    objects.sort_unstable_by_key(|o| (o.index, o.subindex));
+    check_for_duplicates(&objects, |o| (o.index, o.subindex), |o| &o.ident)?;
+    records.sort_unstable_by_key(|r| r.index);
+    check_for_duplicates(&records, |r| r.index, |o| &o.ident)?;
+    Ok((objects, records))
+}
+
+// expects items to be sorted
+fn check_for_duplicates<T: Ord, K: PartialEq>(
+    objects: &[T],
+    f: impl Fn(&T) -> K,
+    f2: impl Fn(&T) -> &Ident,
+) -> Result<()> {
     let Some((first, rest)) = objects.split_first() else {
         return Ok(());
     };
@@ -92,7 +106,7 @@ fn check_for_duplicates(objects: &[Object]) -> Result<()> {
     let mut duplicates = BTreeSet::new();
     let mut last_object = first;
     for object in rest {
-        if object.index == last_object.index && object.subindex == last_object.subindex {
+        if f(object) == f(last_object) {
             duplicates.insert(last_object);
             duplicates.insert(object);
         } else {
@@ -101,10 +115,8 @@ fn check_for_duplicates(objects: &[Object]) -> Result<()> {
     }
 
     let mut errors = Error::accumulator();
-    for object in duplicates {
-        errors.push(
-            Error::custom("Duplicate index and subindex combination").with_span(&object.ident),
-        );
+    for item in duplicates {
+        errors.push(Error::custom("Duplicate index and subindex combination").with_span(f2(item)));
     }
     errors.finish()?;
     Ok(())
