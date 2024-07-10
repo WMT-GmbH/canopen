@@ -1,6 +1,8 @@
 pub use errors::SDOAbortCode;
 pub use server::SdoServer;
 
+// FIXME: client requires heapless::mpmc::Queue which isn't available on all architectures
+#[cfg(feature = "std")]
 pub mod client;
 pub mod errors;
 pub mod server;
