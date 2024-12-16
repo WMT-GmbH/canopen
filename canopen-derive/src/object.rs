@@ -9,22 +9,31 @@ pub fn extract_field_info(field: &Field) -> Result<FieldInfo> {
     let ident = field.ident.as_ref().expect("field should have name");
     let mut errors = Error::accumulator();
     let mut records = Vec::new();
-    let objects: Vec<Object> = field
-        .attrs
-        .iter()
-        .filter_map(|attr| {
-            if let Ok(record) = RecordParser::from_attributes(slice::from_ref(attr)) {
-                records.push(Record {
-                    ident: ident.clone(),
-                    index: record.index,
-                    name: record.record,
-                });
-                None
-            } else {
-                errors.handle(Object::new(attr, ident.clone(), &field.ty))
+    let mut objects = Vec::new();
+
+    for attr in &field.attrs {
+        // try to parse as a record, then as an array, then as an object
+        if let Ok(record) = RecordParser::from_attributes(slice::from_ref(attr)) {
+            records.push(Record {
+                ident: ident.clone(),
+                index: record.index,
+                name: record.record,
+                is_array: false,
+            });
+        } else if let Ok(array) = ArrayParser::from_attributes(slice::from_ref(attr)) {
+            array.generate_objects(ident, &mut objects);
+            records.push(Record {
+                ident: ident.clone(),
+                index: array.index,
+                name: array.array,
+                is_array: true,
+            });
+        } else {
+            if let Some(object) = errors.handle(Object::new(attr, ident.clone(), &field.ty)) {
+                objects.push(object);
             }
-        })
-        .collect();
+        }
+    }
 
     errors.finish()?;
 
@@ -58,6 +67,7 @@ pub struct Record {
     pub ident: Ident,
     pub index: u16,
     pub name: String,
+    pub is_array: bool,
 }
 
 #[derive(darling::FromAttributes)]
@@ -114,23 +124,7 @@ impl Object {
     }
 
     fn parse_datatype(val: Expr) -> Result<Option<DataType>> {
-        match val {
-            Expr::Lit(ExprLit { lit, .. }) => {
-                let num = u8::from_value(&lit)?;
-                match DataType::from_u8(num) {
-                    Some(typ) => Ok(Some(typ)),
-                    None => Err(Error::custom("invalid data type")),
-                }
-            }
-            Expr::Path(ExprPath { path, .. }) => match DataType::from_rust_type(&path) {
-                Some(typ) => Ok(Some(typ)),
-                None => match DataType::from_str(&path) {
-                    Some(typ) => Ok(Some(typ)),
-                    None => Err(Error::custom("invalid data type")),
-                },
-            },
-            _ => Err(Error::unexpected_expr_type(&val)),
-        }
+        DataType::from_expr(&val).map(Some)
     }
 
     fn guess_type(ty: &Type) -> Option<DataType> {
@@ -145,8 +139,44 @@ impl Object {
 #[derive(darling::FromAttributes)]
 #[darling(attributes(canopen))]
 pub struct RecordParser {
-    pub index: u16,
     pub record: String,
+    pub index: u16,
+}
+
+#[derive(darling::FromAttributes)]
+#[darling(attributes(canopen))]
+pub struct ArrayParser {
+    pub array: String,
+    pub index: u16,
+    pub size: u8,
+    pub typ: DataType,
+}
+
+impl ArrayParser {
+    fn generate_objects(&self, ident: &Ident, objects: &mut Vec<Object>) {
+        let array_len = Object {
+            ident: ident.clone(),
+            index: self.index,
+            subindex: 0,
+            read_only: true,
+            write_only: false,
+            name: None,
+            typ: Some(DataType::UNSIGNED8),
+        };
+        objects.push(array_len);
+        for i in 1..=self.size {
+            let array_element = Object {
+                ident: ident.clone(),
+                index: self.index,
+                subindex: i,
+                read_only: false,
+                write_only: false,
+                name: None,
+                typ: Some(self.typ),
+            };
+            objects.push(array_element);
+        }
+    }
 }
 
 // Implement Ord and PartialOrd for Object so we can sort them
@@ -225,6 +255,28 @@ pub enum DataType {
     PDO_MAPPING = 0x21,
     SDO_PARAMETER = 0x22,
     IDENTITY = 0x23,
+}
+
+impl FromMeta for DataType {
+    fn from_expr(expr: &Expr) -> Result<Self> {
+        match expr {
+            Expr::Lit(ExprLit { lit, .. }) => {
+                let num = u8::from_value(&lit)?;
+                match DataType::from_u8(num) {
+                    Some(typ) => Ok(typ),
+                    None => Err(Error::custom("invalid data type")),
+                }
+            }
+            Expr::Path(ExprPath { path, .. }) => match DataType::from_rust_type(&path) {
+                Some(typ) => Ok(typ),
+                None => match DataType::from_str(&path) {
+                    Some(typ) => Ok(typ),
+                    None => Err(Error::custom("invalid data type")),
+                },
+            },
+            _ => Err(Error::unexpected_expr_type(&expr)),
+        }
+    }
 }
 
 impl DataType {

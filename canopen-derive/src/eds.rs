@@ -50,7 +50,11 @@ fn write_record(file: &mut File, object: &Record) -> io::Result<()> {
     writeln!(file)?;
     writeln!(file, "[{:X}]", object.index)?;
     writeln!(file, "ParameterName={}", object.name)?;
-    writeln!(file, "ObjectType=0x09")?;
+    if object.is_array {
+        writeln!(file, "ObjectType=0x08")?;
+    } else {
+        writeln!(file, "ObjectType=0x09")?;
+    }
     Ok(())
 }
 
