@@ -150,6 +150,10 @@ pub struct ArrayParser {
     pub index: u16,
     pub size: u8,
     pub typ: DataType,
+    #[darling(default)]
+    pub read_only: bool,
+    #[darling(default)]
+    pub write_only: bool,
 }
 
 impl ArrayParser {
@@ -169,8 +173,8 @@ impl ArrayParser {
                 ident: ident.clone(),
                 index: self.index,
                 subindex: i,
-                read_only: false,
-                write_only: false,
+                read_only: self.read_only,
+                write_only: self.write_only,
                 name: None,
                 typ: Some(self.typ),
             };
